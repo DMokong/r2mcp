@@ -5,8 +5,8 @@
  * Memory MCP Server against a real PostgreSQL database.
  *
  * Run:
- *   cd memory-mcp-server
- *   MEMORY_DB_URL=postgresql://cindy:cindy@localhost:5433/cindy_memory_test npx vitest run tests/gauntlet.test.ts
+ *   cd r2mcp
+ *   DATABASE_URL=postgresql://r2mcp:r2mcp@localhost:5432/r2mcp_test npx vitest run tests/gauntlet.test.ts
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -28,7 +28,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __gauntlet_dirname = dirname(fileURLToPath(import.meta.url));
-const envPath = resolve(__gauntlet_dirname, '../../.env');
+const envPath = resolve(__gauntlet_dirname, '../.env');
 if (!process.env.OPENROUTER_API_KEY && existsSync(envPath)) {
   const envContent = readFileSync(envPath, 'utf-8');
   const match = envContent.match(/^OPENROUTER_API_KEY=(.+)$/m);

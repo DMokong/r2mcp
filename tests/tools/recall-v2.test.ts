@@ -35,7 +35,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const envPath = resolve(__dirname, '../../../.env');
+const envPath = resolve(__dirname, '../../.env');
 if (!process.env.OPENROUTER_API_KEY && existsSync(envPath)) {
   const envContent = readFileSync(envPath, 'utf-8');
   const match = envContent.match(/^OPENROUTER_API_KEY=(.+)$/m);
