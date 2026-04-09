@@ -29,16 +29,16 @@ import { fileURLToPath } from 'node:url';
 
 const __gauntlet_dirname = dirname(fileURLToPath(import.meta.url));
 const envPath = resolve(__gauntlet_dirname, '../../.env');
-if (!process.env.OPEN_ROUTER_API_KEY && existsSync(envPath)) {
+if (!process.env.OPENROUTER_API_KEY && existsSync(envPath)) {
   const envContent = readFileSync(envPath, 'utf-8');
-  const match = envContent.match(/^OPEN_ROUTER_API_KEY=(.+)$/m);
+  const match = envContent.match(/^OPENROUTER_API_KEY=(.+)$/m);
   if (match) {
-    process.env.OPEN_ROUTER_API_KEY = match[1].trim();
+    process.env.OPENROUTER_API_KEY = match[1].trim();
   }
 }
 
 // Ensure no embeddings API is used (full-text only, unless explicitly testing semantic)
-const originalApiKey = process.env.OPEN_ROUTER_API_KEY;
+const originalApiKey = process.env.OPENROUTER_API_KEY;
 
 beforeAll(async () => {
   pool = await setupTestDb();
@@ -47,7 +47,7 @@ beforeAll(async () => {
 afterAll(async () => {
   // Restore original API key
   if (originalApiKey) {
-    process.env.OPEN_ROUTER_API_KEY = originalApiKey;
+    process.env.OPENROUTER_API_KEY = originalApiKey;
   }
   await teardownTestDb();
 });
@@ -95,7 +95,7 @@ describe('Memory System Gauntlet', () => {
   beforeEach(async () => {
     // Clear DB and unset API key for deterministic full-text mode
     await clearMemories();
-    delete process.env.OPEN_ROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
   });
 
   // =========================================================================
@@ -285,8 +285,8 @@ describe('Memory System Gauntlet', () => {
   // =========================================================================
   describe('5. Full-Text Fallback', () => {
     it('recall works in fulltext_only mode when no API key is set', async () => {
-      // OPEN_ROUTER_API_KEY is already unset in beforeEach
-      expect(process.env.OPEN_ROUTER_API_KEY).toBeUndefined();
+      // OPENROUTER_API_KEY is already unset in beforeEach
+      expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
 
       await remember({
         operation: 'ADD',
@@ -317,7 +317,7 @@ describe('Memory System Gauntlet', () => {
       'meaning-based search finds results by concept, not keyword',
       async () => {
         // Restore API key for this test
-        process.env.OPEN_ROUTER_API_KEY = originalApiKey;
+        process.env.OPENROUTER_API_KEY = originalApiKey;
 
         await remember({
           operation: 'ADD',
@@ -335,7 +335,7 @@ describe('Memory System Gauntlet', () => {
         expect(result.results[0].content).toContain('bun');
 
         // Clean up
-        delete process.env.OPEN_ROUTER_API_KEY;
+        delete process.env.OPENROUTER_API_KEY;
       },
     );
   });
@@ -348,7 +348,7 @@ describe('Memory System Gauntlet', () => {
 
     beforeEach(async () => {
       await clearMemories();
-      delete process.env.OPEN_ROUTER_API_KEY;
+      delete process.env.OPENROUTER_API_KEY;
       ids = [];
 
       // Seed 5 memories with varying attributes
@@ -637,7 +637,7 @@ describe('Memory System Gauntlet', () => {
   describe('Benchmarks', { timeout: 120_000 }, () => {
     it('measures latency for all tools and outputs JSON summary', async () => {
       await clearMemories();
-      delete process.env.OPEN_ROUTER_API_KEY;
+      delete process.env.OPENROUTER_API_KEY;
 
       // Seed 100 entries across 3 tiers
       const tiers: Array<'preferences' | 'project-context' | 'conversations'> = [
@@ -779,8 +779,8 @@ describe('Memory System Gauntlet', () => {
   describe('11. Recall v2 Benchmarks', () => {
     it('measures token reduction, diversity improvement, and latency overhead vs v1-style recall', async () => {
       // clearMemories() is handled by outer beforeEach — do not call again here
-      // (the outer beforeEach also deletes OPEN_ROUTER_API_KEY for deterministic fulltext mode)
-      delete process.env.OPEN_ROUTER_API_KEY;
+      // (the outer beforeEach also deletes OPENROUTER_API_KEY for deterministic fulltext mode)
+      delete process.env.OPENROUTER_API_KEY;
 
       // Corpus design: 3 clusters of related memories + 1 cluster of off-topic ones
       // Cluster A: 15 near-duplicate launchd memories (tests MMR dedup)

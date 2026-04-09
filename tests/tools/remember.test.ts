@@ -159,8 +159,8 @@ describe('remember() tool', () => {
 
   it('stores with NULL embedding when OpenRouter unavailable', async () => {
     // Ensure no API key
-    const savedKey = process.env.OPEN_ROUTER_API_KEY;
-    delete process.env.OPEN_ROUTER_API_KEY;
+    const savedKey = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     try {
       const result = await remember({
@@ -178,7 +178,7 @@ describe('remember() tool', () => {
     } finally {
       // Restore key if it existed
       if (savedKey !== undefined) {
-        process.env.OPEN_ROUTER_API_KEY = savedKey;
+        process.env.OPENROUTER_API_KEY = savedKey;
       }
     }
   });

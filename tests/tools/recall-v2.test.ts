@@ -36,18 +36,18 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const envPath = resolve(__dirname, '../../../.env');
-if (!process.env.OPEN_ROUTER_API_KEY && existsSync(envPath)) {
+if (!process.env.OPENROUTER_API_KEY && existsSync(envPath)) {
   const envContent = readFileSync(envPath, 'utf-8');
-  const match = envContent.match(/^OPEN_ROUTER_API_KEY=(.+)$/m);
-  if (match) process.env.OPEN_ROUTER_API_KEY = match[1].trim();
+  const match = envContent.match(/^OPENROUTER_API_KEY=(.+)$/m);
+  if (match) process.env.OPENROUTER_API_KEY = match[1].trim();
 }
-const apiKey = process.env.OPEN_ROUTER_API_KEY;
+const apiKey = process.env.OPENROUTER_API_KEY;
 
 beforeAll(async () => { pool = await setupTestDb(); });
 afterAll(async () => { await teardownTestDb(); });
 beforeEach(async () => {
   await pool.query('DELETE FROM memories');
-  delete process.env.OPEN_ROUTER_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
 });
 
 // ---------------------------------------------------------------------------
@@ -318,7 +318,7 @@ describe('Phase 1b: MMR diversity', () => {
 
 describe('Phase 2: Context budgeting (max_tokens)', () => {
   beforeEach(async () => {
-    delete process.env.OPEN_ROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
     // Insert memories with known approximate token counts
     // Each ~10 words → ceil(10 * 1.3) = 13 tokens
     for (let i = 0; i < 10; i++) {
@@ -433,7 +433,7 @@ describe('Phase 3: Progressive tier search', () => {
 
   // Semantic mode progressive search — requires API key
   it.skipIf(!apiKey)('early_stopped=true when preferences tier yields high-confidence match', async () => {
-    process.env.OPEN_ROUTER_API_KEY = apiKey!;
+    process.env.OPENROUTER_API_KEY = apiKey!;
 
     // A very clear, unambiguous preference entry
     await remember({
@@ -465,7 +465,7 @@ describe('Phase 3: Progressive tier search', () => {
       expect(result.tiers_searched).not.toContain('conversations');
     }
 
-    delete process.env.OPEN_ROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
   });
 });
 
@@ -544,7 +544,7 @@ describe('Phase 4: Token optimization measurement', () => {
 
   // Token reduction in semantic mode — requires API key
   it.skipIf(!apiKey)('semantic mode achieves meaningful token reduction vs v1 behavior', async () => {
-    process.env.OPEN_ROUTER_API_KEY = apiKey!;
+    process.env.OPENROUTER_API_KEY = apiKey!;
 
     // Insert redundant memories about the same concept
     const contents = [
@@ -601,7 +601,7 @@ describe('Phase 4: Token optimization measurement', () => {
     expect(v2Style.tiers_searched).toBeDefined();
     expect(v2Style.early_stopped).toBeDefined();
 
-    delete process.env.OPEN_ROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
   });
 });
 
@@ -611,7 +611,7 @@ describe('Phase 4: Token optimization measurement', () => {
 
 describe('Backward compatibility', () => {
   it('recall({query}) works unchanged — returns results with same shape', async () => {
-    delete process.env.OPEN_ROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     await remember({ operation: 'ADD', tier: 'preferences', content: 'Prefer dark mode in all code editors', metadata: { type: 'preference', topics: ['editor'] } });
 
@@ -643,7 +643,7 @@ describe('Backward compatibility', () => {
   });
 
   it('recall({query, top_k}) respects top_k limit', async () => {
-    delete process.env.OPEN_ROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     for (let i = 0; i < 15; i++) {
       await remember({ operation: 'ADD', tier: 'preferences', content: `TypeScript configuration preference entry ${i} with unique identifier`, metadata: { type: 'preference', topics: ['typescript'] } });
@@ -654,7 +654,7 @@ describe('Backward compatibility', () => {
   });
 
   it('recall({query, tier}) still filters by tier', async () => {
-    delete process.env.OPEN_ROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     await remember({ operation: 'ADD', tier: 'preferences', content: 'Prefer TypeScript strict mode configuration', metadata: { type: 'preference', topics: ['typescript'] } });
     await remember({ operation: 'ADD', tier: 'project-context', content: 'TypeScript tsconfig uses strict mode and paths mapping', metadata: { type: 'context', topics: ['typescript'] } });
@@ -664,7 +664,7 @@ describe('Backward compatibility', () => {
   });
 
   it('recall excludes rejected and archived entries (unchanged behavior)', async () => {
-    delete process.env.OPEN_ROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     const r = await remember({ operation: 'ADD', tier: 'preferences', content: 'Use spaces for indentation style', metadata: { type: 'preference', topics: ['code-style'] } });
     await pool.query("UPDATE memories SET type = 'rejection' WHERE id = $1", [r.id]);
@@ -682,7 +682,7 @@ describe('Backward compatibility', () => {
 
 describe('Performance: latency regression', { timeout: 30_000 }, () => {
   it('v2 recall P95 latency is within 100ms of v1 behavior (fulltext mode)', async () => {
-    delete process.env.OPEN_ROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     // Seed 50 entries for realistic corpus
     for (let i = 0; i < 50; i++) {

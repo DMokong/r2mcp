@@ -13,8 +13,8 @@ beforeEach(async () => { await pool.query('DELETE FROM memories'); });
 describe('recall() tool', () => {
   it('falls back to full-text search when embeddings unavailable', async () => {
     // Ensure no API key so embeddings are null
-    const savedKey = process.env.OPEN_ROUTER_API_KEY;
-    delete process.env.OPEN_ROUTER_API_KEY;
+    const savedKey = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     try {
       // Seed data
@@ -49,14 +49,14 @@ describe('recall() tool', () => {
       expect(match!.score).toBeGreaterThan(0);
     } finally {
       if (savedKey !== undefined) {
-        process.env.OPEN_ROUTER_API_KEY = savedKey;
+        process.env.OPENROUTER_API_KEY = savedKey;
       }
     }
   });
 
   it('applies tier weighting — preferences ranks above conversations for similar content', async () => {
-    const savedKey = process.env.OPEN_ROUTER_API_KEY;
-    delete process.env.OPEN_ROUTER_API_KEY;
+    const savedKey = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     try {
       // Store similar content in different tiers
@@ -87,14 +87,14 @@ describe('recall() tool', () => {
       expect(response.results[0].score).toBeGreaterThan(response.results[1].score);
     } finally {
       if (savedKey !== undefined) {
-        process.env.OPEN_ROUTER_API_KEY = savedKey;
+        process.env.OPENROUTER_API_KEY = savedKey;
       }
     }
   });
 
   it('filters by tier when tier parameter is provided', async () => {
-    const savedKey = process.env.OPEN_ROUTER_API_KEY;
-    delete process.env.OPEN_ROUTER_API_KEY;
+    const savedKey = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     try {
       // Store memories in different tiers, all mentioning "database"
@@ -131,14 +131,14 @@ describe('recall() tool', () => {
       expect(response.results[0].content).toContain('pgvector');
     } finally {
       if (savedKey !== undefined) {
-        process.env.OPEN_ROUTER_API_KEY = savedKey;
+        process.env.OPENROUTER_API_KEY = savedKey;
       }
     }
   });
 
   it('excludes rejected and archived entries from results', async () => {
-    const savedKey = process.env.OPEN_ROUTER_API_KEY;
-    delete process.env.OPEN_ROUTER_API_KEY;
+    const savedKey = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
     try {
       const original = await remember({
@@ -169,7 +169,7 @@ describe('recall() tool', () => {
       expect(response.results[0].content).toContain('tabs');
     } finally {
       if (savedKey !== undefined) {
-        process.env.OPEN_ROUTER_API_KEY = savedKey;
+        process.env.OPENROUTER_API_KEY = savedKey;
       }
     }
   });
