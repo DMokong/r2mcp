@@ -1,0 +1,24 @@
+# r2mcp — local PostgreSQL + pgvector
+# Usage: docker compose up -d
+# Then: npm run setup
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: r2mcp-postgres
+    environment:
+      POSTGRES_DB: r2mcp
+      POSTGRES_USER: r2mcp
+      POSTGRES_PASSWORD: r2mcp
+    ports:
+      - "5432:5432"
+    volumes:
+      - r2mcp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U r2mcp -d r2mcp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  r2mcp_pgdata:
