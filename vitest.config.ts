@@ -6,13 +6,16 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       exclude: [
-        'src/index.ts',
-        'src/graph-rebuild.ts',
-        'src/embeddings.ts',
+        'src/index.ts',          // MCP server entry point — integration-only
+        'src/graph-rebuild.ts',  // optional script, existsSync guard only
+        'src/embeddings.ts',     // requires live OpenRouter API
+        'src/instrumentation.ts', // OTel setup — requires running collector
+        'src/telemetry.ts',      // OTel metrics — requires running collector
         'dist/**',
         'tests/**',
         'vitest.config.ts',
-        'scripts/migrate.ts',
+        'scripts/migrate.ts',    // CLI script
+        'scripts/setup.ts',      // CLI script — same rationale as migrate.ts
       ],
     },
   },
