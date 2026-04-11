@@ -29,7 +29,7 @@ npm install
 
 ```bash
 cp .env.example .env
-# Edit .env — set DATABASE_URL and OPENROUTER_API_KEY
+# Edit .env — set R2MCP_DATABASE_URL and R2MCP_OPENROUTER_API_KEY
 ```
 
 ### 3. Start Postgres (skip if you have your own)
@@ -64,8 +64,8 @@ Add to your project's `.mcp.json`:
       "command": "node",
       "args": ["/path/to/r2mcp/dist/index.js"],
       "env": {
-        "DATABASE_URL": "postgresql://r2mcp:r2mcp@localhost:5432/r2mcp",
-        "OPENROUTER_API_KEY": "your_key_here"
+        "R2MCP_DATABASE_URL": "postgresql://r2mcp:r2mcp@localhost:5432/r2mcp",
+        "R2MCP_OPENROUTER_API_KEY": "your_key_here"
       }
     }
   }
@@ -103,7 +103,7 @@ Then use `/remember <note>` in Claude Code to persist memories with full judgmen
 
 ## Cross-Project Memory
 
-All projects pointing at the same `DATABASE_URL` share a single memory pool. This is intentional — your knowledge travels with you. Namespace isolation is a v2 roadmap item.
+All projects pointing at the same `R2MCP_DATABASE_URL` share a single memory pool. This is intentional — your knowledge travels with you. Namespace isolation is a v2 roadmap item.
 
 ## OpenTelemetry (optional)
 
@@ -121,7 +121,7 @@ Metrics use the `r2mcp.memory.*` namespace.
 If you're moving from the ClaudeClaw-internal `memory-mcp-server`:
 
 ```bash
-DATABASE_URL=<your-new-url> npx tsx scripts/migrate.ts /path/to/your/memory/
+R2MCP_DATABASE_URL=<your-new-url> npx tsx scripts/migrate.ts /path/to/your/memory/
 ```
 
 The migration script reads `preferences.md`, `project-context.md`, and `conversations.md` from the specified directory and imports them. It's idempotent — safe to re-run.

@@ -4,7 +4,7 @@
  * Usage: npm run setup
  *
  * What it does:
- * 1. Connects to DATABASE_URL
+ * 1. Connects to R2MCP_DATABASE_URL
  * 2. Enables the pgvector extension
  * 3. Runs schema.sql (CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS)
  * 4. Verifies the schema by running a quick sanity query
@@ -32,13 +32,13 @@ if (existsSync(envPath)) {
   }
 }
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://localhost:5432/r2mcp';
+const R2MCP_DATABASE_URL = process.env.R2MCP_DATABASE_URL || 'postgresql://localhost:5432/r2mcp';
 
 async function setup() {
   console.log('r2mcp setup — provisioning database schema...');
-  console.log(`Connecting to: ${DATABASE_URL.replace(/:[^:@]+@/, ':***@')}`);
+  console.log(`Connecting to: ${R2MCP_DATABASE_URL.replace(/:[^:@]+@/, ':***@')}`);
 
-  const pool = new pg.Pool({ connectionString: DATABASE_URL });
+  const pool = new pg.Pool({ connectionString: R2MCP_DATABASE_URL });
   const client = await pool.connect();
 
   try {
@@ -76,7 +76,7 @@ async function setup() {
     console.log('     "memory": {');
     console.log('       "command": "node",');
     console.log('       "args": ["<path-to-r2mcp>/dist/index.js"],');
-    console.log('       "env": { "DATABASE_URL": "<your-url>", "OPENROUTER_API_KEY": "<your-key>" }');
+    console.log('       "env": { "R2MCP_DATABASE_URL": "<your-url>", "R2MCP_OPENROUTER_API_KEY": "<your-key>" }');
     console.log('     }');
     console.log('  2. Build: npm run build');
     console.log('  3. Restart Claude Code to pick up the new MCP server');
@@ -90,7 +90,7 @@ async function setup() {
 setup().catch((err) => {
   console.error('\n❌ Setup failed:', err.message);
   console.error('\nTroubleshooting:');
-  console.error('  - Check DATABASE_URL is set correctly in .env');
+  console.error('  - Check R2MCP_DATABASE_URL is set correctly in .env');
   console.error('  - Ensure PostgreSQL is running (try: docker compose up -d)');
   console.error('  - Ensure the database exists (try: createdb r2mcp)');
   process.exit(1);

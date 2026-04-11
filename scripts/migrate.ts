@@ -2,7 +2,7 @@
  * Migration script: imports tiered markdown memory files into PostgreSQL.
  *
  * Usage:
- *   DATABASE_URL=postgresql://localhost:5432/r2mcp npx tsx scripts/migrate.ts <memory-dir>
+ *   R2MCP_DATABASE_URL=postgresql://localhost:5432/r2mcp npx tsx scripts/migrate.ts <memory-dir>
  *
  * Where <memory-dir> contains preferences.md, project-context.md, conversations.md
  *

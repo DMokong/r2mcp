@@ -11,7 +11,7 @@ let pool: pg.Pool | null = null;
 export function getPool(): pg.Pool {
   if (!pool) {
     pool = new pg.Pool({
-      connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/r2mcp',
+      connectionString: process.env.R2MCP_DATABASE_URL || 'postgresql://localhost:5432/r2mcp',
     });
   }
   return pool;

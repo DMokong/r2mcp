@@ -7,7 +7,7 @@ export async function embedBatch(
   texts: string[],
   model: string = DEFAULT_MODEL
 ): Promise<number[][] | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.R2MCP_OPENROUTER_API_KEY;
   if (!apiKey) {
     return null;
   }
