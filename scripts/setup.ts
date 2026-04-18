@@ -17,6 +17,7 @@ import pgvector from 'pgvector/pg';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { validateDatabaseUrl, classifySetupError } from './setup-helpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -35,8 +36,18 @@ if (existsSync(envPath)) {
 const R2MCP_DATABASE_URL = process.env.R2MCP_DATABASE_URL || 'postgresql://localhost:5432/r2mcp';
 
 async function setup() {
+  const redactedUrl = R2MCP_DATABASE_URL.replace(/:[^:@]+@/, ':***@');
+
+  try {
+    validateDatabaseUrl(R2MCP_DATABASE_URL);
+  } catch (validationErr) {
+    console.error(`\n❌ Invalid database URL: ${redactedUrl}`);
+    console.error((validationErr as Error).message);
+    process.exit(1);
+  }
+
   console.log('r2mcp setup — provisioning database schema...');
-  console.log(`Connecting to: ${R2MCP_DATABASE_URL.replace(/:[^:@]+@/, ':***@')}`);
+  console.log(`Connecting to: ${redactedUrl}`);
 
   const pool = new pg.Pool({ connectionString: R2MCP_DATABASE_URL });
   const client = await pool.connect();
@@ -88,10 +99,10 @@ async function setup() {
 }
 
 setup().catch((err) => {
-  console.error('\n❌ Setup failed:', err.message);
-  console.error('\nTroubleshooting:');
-  console.error('  - Check R2MCP_DATABASE_URL is set correctly in .env');
-  console.error('  - Ensure PostgreSQL is running (try: docker compose up -d)');
-  console.error('  - Ensure the database exists (try: createdb r2mcp)');
+  const redactedUrl = R2MCP_DATABASE_URL.replace(/:[^:@]+@/, ':***@');
+  const { cause, fix } = classifySetupError(err as Error, redactedUrl);
+  console.error('\n❌ Setup failed');
+  console.error(`\nCause: ${cause}`);
+  console.error(`Fix:   ${fix}`);
   process.exit(1);
 });
