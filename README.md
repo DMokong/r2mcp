@@ -53,7 +53,7 @@ Add to your project's `.mcp.json`:
       "command": "node",
       "args": ["/path/to/r2mcp/dist/index.js"],
       "env": {
-        "R2MCP_DATABASE_URL": "postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres",
+        "R2MCP_DATABASE_URL": "postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres",
         "R2MCP_OPENROUTER_API_KEY": "your_key_here"
       }
     }

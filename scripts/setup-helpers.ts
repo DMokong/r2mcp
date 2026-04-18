@@ -61,6 +61,16 @@ export function classifySetupError(err: Error, redactedUrl: string): SetupErrorC
     };
   }
 
+  if (
+    code === 'ETIMEDOUT' || code === 'ENOTFOUND' ||
+    msg.includes('connect etimedout') || msg.includes('getaddrinfo')
+  ) {
+    return {
+      cause: `Could not reach ${redactedUrl}`,
+      fix: 'Check that the host in DATABASE_URL is correct. For Supabase: verify your IP is allowed under Project Settings → Networking, and that the project ref in the URL matches your project.',
+    };
+  }
+
   return {
     cause: `Setup failed: ${err.message}`,
     fix: 'Check R2MCP_DATABASE_URL in .env and ensure the database is accessible',

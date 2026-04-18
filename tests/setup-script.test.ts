@@ -72,6 +72,13 @@ describe('classifySetupError()', () => {
     expect(result.fix).toMatch(/Supabase Dashboard/i);
   });
 
+  it('classifies ETIMEDOUT as unreachable host with networking guidance', () => {
+    const err = Object.assign(new Error('connect ETIMEDOUT 54.200.1.1:5432'), { code: 'ETIMEDOUT' });
+    const result = classifySetupError(err, url);
+    expect(result.cause).toMatch(/could not reach/i);
+    expect(result.fix).toMatch(/Networking/i);
+  });
+
   it('returns a generic fallback for unknown errors', () => {
     const err = new Error('some unexpected database error');
     const result = classifySetupError(err, url);
