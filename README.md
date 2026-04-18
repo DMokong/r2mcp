@@ -13,11 +13,63 @@ Persistent, semantic, tiered memory layer for Claude Code sessions.
 - **Semantic search:** Progressive tier search with MMR diversity reranking and relevance floor filtering (Recall v2)
 - **Bundled `/remember` skill:** Client-side judgment pipeline — classify → conflict-check → store
 
-## Setup (< 10 minutes)
+## Setup
 
-**Prerequisites:** Node.js 20+, Docker (or existing PostgreSQL), OpenRouter API key
+**Prerequisites:** Node.js 20+, OpenRouter API key. Docker optional (Option B only).
 
-### 1. Clone
+r2mcp works with any PostgreSQL + pgvector backend. The fastest path is Supabase (free tier, no Docker required).
+
+### Option A: Supabase (no Docker required)
+
+#### 1. Create a Supabase project
+
+Create a free project at [supabase.com](https://supabase.com). Once created, go to **Project Settings → Database → Connection string → Direct** (not Pooler) and copy the URL (port 5432).
+
+#### 2. Clone and configure
+
+```bash
+git clone https://github.com/DMokong/r2mcp.git && cd r2mcp && npm install
+cp .env.example .env
+# Set R2MCP_DATABASE_URL to your Supabase direct URL (port 5432, not 6543)
+# Set R2MCP_OPENROUTER_API_KEY to your OpenRouter key
+```
+
+#### 3. Provision schema and build
+
+```bash
+npm run setup && npm run build
+```
+
+This creates the `memories` table, pgvector indexes, and full-text search index. **Safe to re-run.**
+
+#### 4. Register in Claude Code
+
+Add to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "node",
+      "args": ["/path/to/r2mcp/dist/index.js"],
+      "env": {
+        "R2MCP_DATABASE_URL": "postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres",
+        "R2MCP_OPENROUTER_API_KEY": "your_key_here"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Code. You now have `mcp__memory__remember`, `mcp__memory__recall`, etc. available.
+
+---
+
+### Option B: Docker (local dev)
+
+For local development or air-gapped environments.
+
+#### 1. Clone
 
 ```bash
 git clone https://github.com/DMokong/r2mcp.git
@@ -25,21 +77,21 @@ cd r2mcp
 npm install
 ```
 
-### 2. Configure
+#### 2. Configure
 
 ```bash
 cp .env.example .env
 # Edit .env — set R2MCP_DATABASE_URL and R2MCP_OPENROUTER_API_KEY
 ```
 
-### 3. Start Postgres (skip if you have your own)
+#### 3. Start Postgres
 
 ```bash
 docker compose up -d
 # Wait ~10s for healthy status
 ```
 
-### 4. Provision schema
+#### 4. Provision schema
 
 ```bash
 npm run setup
@@ -47,13 +99,13 @@ npm run setup
 
 This creates the `memories` table, pgvector indexes, and full-text search index. **Safe to re-run.**
 
-### 5. Build
+#### 5. Build
 
 ```bash
 npm run build
 ```
 
-### 6. Register in Claude Code
+#### 6. Register in Claude Code
 
 Add to your project's `.mcp.json`:
 
@@ -74,7 +126,7 @@ Add to your project's `.mcp.json`:
 
 Restart Claude Code. You now have `mcp__memory__remember`, `mcp__memory__recall`, etc. available.
 
-### 7. Install the /remember skill (optional but recommended)
+#### 7. Install the /remember skill (optional but recommended)
 
 ```bash
 cp -r skills/remember .claude/plugins/
