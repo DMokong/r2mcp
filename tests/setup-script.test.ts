@@ -1,5 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { validateDatabaseUrl, classifySetupError } from '../scripts/setup-helpers.js';
+import { validateDatabaseUrl, classifySetupError, redactDatabaseUrl } from '../scripts/setup-helpers.js';
+
+describe('redactDatabaseUrl()', () => {
+  it('replaces password with *** in a standard URL', () => {
+    expect(redactDatabaseUrl('postgresql://user:pass@host:5432/db')).toBe('postgresql://user:***@host:5432/db');
+  });
+
+  it('returns URL unchanged when there is no password (username only)', () => {
+    const url = 'postgresql://user@host:5432/db';
+    expect(redactDatabaseUrl(url)).toBe(url);
+  });
+
+  it('returns non-URL strings unchanged', () => {
+    const str = 'not-a-url';
+    expect(redactDatabaseUrl(str)).toBe(str);
+  });
+});
 
 describe('validateDatabaseUrl()', () => {
   it('accepts a standard direct postgres URL', () => {

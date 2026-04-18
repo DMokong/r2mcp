@@ -1,3 +1,7 @@
+export function redactDatabaseUrl(url: string): string {
+  return url.replace(/:[^:/@]+@/, ':***@');
+}
+
 export function validateDatabaseUrl(url: string): void {
   let parsed: URL;
   try {

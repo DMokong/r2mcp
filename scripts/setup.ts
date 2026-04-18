@@ -17,7 +17,7 @@ import pgvector from 'pgvector/pg';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateDatabaseUrl, classifySetupError } from './setup-helpers.js';
+import { validateDatabaseUrl, classifySetupError, redactDatabaseUrl } from './setup-helpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -36,7 +36,7 @@ if (existsSync(envPath)) {
 const R2MCP_DATABASE_URL = process.env.R2MCP_DATABASE_URL || 'postgresql://localhost:5432/r2mcp';
 
 async function setup() {
-  const redactedUrl = R2MCP_DATABASE_URL.replace(/:[^:@]+@/, ':***@');
+  const redactedUrl = redactDatabaseUrl(R2MCP_DATABASE_URL);
 
   try {
     validateDatabaseUrl(R2MCP_DATABASE_URL);
@@ -99,7 +99,8 @@ async function setup() {
 }
 
 setup().catch((err) => {
-  const redactedUrl = R2MCP_DATABASE_URL.replace(/:[^:@]+@/, ':***@');
+  const redactedUrl = redactDatabaseUrl(R2MCP_DATABASE_URL);
+  // pg library always throws Error instances; cast is safe
   const { cause, fix } = classifySetupError(err as Error, redactedUrl);
   console.error('\n❌ Setup failed');
   console.error(`\nCause: ${cause}`);
