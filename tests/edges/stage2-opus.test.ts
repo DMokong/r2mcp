@@ -4,7 +4,21 @@ import {
   parseStage2Response,
   shouldSkipForRejection,
 } from '../../src/edges/stage2-opus.js';
-import type { EdgeAnthropicClient } from '../../src/edges/anthropic-client.js';
+import type { LLMProvider } from '../../src/providers/types.js';
+
+function makeMockProvider(response: string, cost_usd: number): LLMProvider {
+  return {
+    name: 'anthropic',
+    concurrencyLimit: 10,
+    complete: vi.fn().mockResolvedValue({
+      response,
+      cost_usd,
+      latency_ms: 100,
+      input_tokens: 800,
+      output_tokens: 60,
+    }),
+  };
+}
 
 describe('shouldSkipForRejection (AC10)', () => {
   it('skips when either memory is type=rejection', () => {
@@ -44,13 +58,11 @@ describe('parseStage2Response', () => {
 
 describe('stage2OpusClassify (R4)', () => {
   it('returns the parsed relation when Opus answers cleanly', async () => {
-    const mockClient = {
-      complete: vi.fn().mockResolvedValue({
-        text: '{"relation":"contradicts","confidence":0.85,"rationale":"explicit deprecation"}',
-        input_tokens: 800, output_tokens: 60, cost_usd: 0.0165,
-      }),
-    } as unknown as EdgeAnthropicClient;
-    const result = await stage2OpusClassify(mockClient, {
+    const provider = makeMockProvider(
+      '{"relation":"contradicts","confidence":0.85,"rationale":"explicit deprecation"}',
+      0.0165,
+    );
+    const result = await stage2OpusClassify(provider, {
       from: { id: 'a', content: 'use library X', type: 'context' },
       to:   { id: 'b', content: 'do not use X — deprecated', type: 'context' },
     });
@@ -62,23 +74,25 @@ describe('stage2OpusClassify (R4)', () => {
   });
 
   it('returns rejection_skip without calling the API for rejection memories (AC10)', async () => {
-    const mockClient = { complete: vi.fn() } as unknown as EdgeAnthropicClient;
-    const result = await stage2OpusClassify(mockClient, {
+    const provider: LLMProvider = {
+      name: 'anthropic',
+      concurrencyLimit: 10,
+      complete: vi.fn(),
+    };
+    const result = await stage2OpusClassify(provider, {
       from: { id: 'r1', content: 'do not add fallback handlers', type: 'rejection' },
       to:   { id: 'p1', content: 'we use try/catch with re-raise', type: 'context' },
     });
     expect(result.kind).toBe('rejection_skip');
-    expect(mockClient.complete).not.toHaveBeenCalled();
+    expect(provider.complete).not.toHaveBeenCalled();
   });
 
   it('returns none when Opus says no relation', async () => {
-    const mockClient = {
-      complete: vi.fn().mockResolvedValue({
-        text: '{"relation":"none","confidence":0,"rationale":"distinct"}',
-        input_tokens: 800, output_tokens: 30, cost_usd: 0.014,
-      }),
-    } as unknown as EdgeAnthropicClient;
-    const result = await stage2OpusClassify(mockClient, {
+    const provider = makeMockProvider(
+      '{"relation":"none","confidence":0,"rationale":"distinct"}',
+      0.014,
+    );
+    const result = await stage2OpusClassify(provider, {
       from: { id: 'a', content: 'morning brief', type: 'context' },
       to:   { id: 'b', content: 'email triage', type: 'context' },
     });

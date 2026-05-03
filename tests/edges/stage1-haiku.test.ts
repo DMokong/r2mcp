@@ -1,6 +1,20 @@
 import { describe, it, expect, vi } from 'vitest';
 import { stage1HaikuFilter, parseStage1Response } from '../../src/edges/stage1-haiku.js';
-import type { EdgeAnthropicClient } from '../../src/edges/anthropic-client.js';
+import type { LLMProvider } from '../../src/providers/types.js';
+
+function makeMockProvider(response: string, cost_usd: number): LLMProvider {
+  return {
+    name: 'anthropic',
+    concurrencyLimit: 10,
+    complete: vi.fn().mockResolvedValue({
+      response,
+      cost_usd,
+      latency_ms: 100,
+      input_tokens: 200,
+      output_tokens: 30,
+    }),
+  };
+}
 
 describe('parseStage1Response', () => {
   it('parses YES + comment', () => {
@@ -19,35 +33,26 @@ describe('parseStage1Response', () => {
 
 describe('stage1HaikuFilter', () => {
   it('returns pass=true when Haiku says YES', async () => {
-    const mockClient = {
-      complete: vi.fn().mockResolvedValue({
-        text: 'YES — both discuss library X',
-        input_tokens: 200,
-        output_tokens: 30,
-        cost_usd: 0.00028,
-      }),
-    } as unknown as EdgeAnthropicClient;
-    const result = await stage1HaikuFilter(mockClient, {
+    const provider = makeMockProvider('YES — both discuss library X', 0.00028);
+    const result = await stage1HaikuFilter(provider, {
       from: { id: 'a', content: 'use library X' },
       to:   { id: 'b', content: 'do not use library X' },
     });
     expect(result.pass).toBe(true);
     expect(result.cost_usd).toBeCloseTo(0.00028, 6);
-    expect(mockClient.complete).toHaveBeenCalledWith(
-      'haiku',
-      expect.stringContaining('relation'),
-      expect.stringContaining('use library X'),
-      expect.any(Number),
+    expect(provider.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'haiku',
+        system: expect.stringContaining('relation'),
+        prompt: expect.stringContaining('use library X'),
+        max_tokens: expect.any(Number),
+      }),
     );
   });
 
   it('returns pass=false when Haiku says NO', async () => {
-    const mockClient = {
-      complete: vi.fn().mockResolvedValue({
-        text: 'NO — distinct subsystems', input_tokens: 200, output_tokens: 20, cost_usd: 0.00024,
-      }),
-    } as unknown as EdgeAnthropicClient;
-    const result = await stage1HaikuFilter(mockClient, {
+    const provider = makeMockProvider('NO — distinct subsystems', 0.00024);
+    const result = await stage1HaikuFilter(provider, {
       from: { id: 'a', content: 'morning brief' },
       to:   { id: 'b', content: 'email triage' },
     });

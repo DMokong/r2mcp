@@ -1,32 +1,43 @@
 #!/usr/bin/env tsx
 /**
- * SPEC-043 edge classifier CLI.
+ * SPEC-043 / SPEC-044 edge classifier CLI.
  *
  * Usage:
- *   npm run edges:classify -- [--since=DURATION] [--max-cost=USD] [--dry-run] [--resume=<run_id>]
+ *   npm run edges:classify -- [--since=DURATION] [--max-cost=USD] [--dry-run] [--resume=<run_id>] [--provider=<name>]
+ *
+ * Provider selection precedence (D.R3):
+ *   1. --provider=claude-code|anthropic|openrouter
+ *   2. R2MCP_CLASSIFIER_PROVIDER env var
+ *   3. Auto-fallback (claude-code → anthropic → openrouter)
  *
  * Examples:
- *   npm run edges:classify -- --dry-run                    # estimate only
- *   npm run edges:classify -- --max-cost=5.00              # full run, $5 cap
- *   npm run edges:classify -- --since=7d --max-cost=1.00   # incremental
- *   npm run edges:classify -- --resume=abc123              # continue prior run
+ *   npm run edges:classify -- --dry-run                       # estimate only
+ *   npm run edges:classify -- --max-cost=5.00                 # full run, $5 cap
+ *   npm run edges:classify -- --since=7d --max-cost=1.00      # incremental
+ *   npm run edges:classify -- --resume=abc123                 # continue prior run
+ *   npm run edges:classify -- --provider=claude-code          # force Max-covered
  *
  * Exit codes:
  *   0 — completed normally OR hit cap gracefully OR dry-run completed
- *   1 — fatal error (DB unreachable, missing API key, etc.)
+ *   1 — fatal error (DB unreachable, no provider configured, etc.)
  */
 
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { initDb, getPool, closeDb } from '../src/db.js';
 import { findCandidatePairs } from '../src/edges/candidate-pairs.js';
-import { EdgeAnthropicClient } from '../src/edges/anthropic-client.js';
 import { stage1HaikuFilter } from '../src/edges/stage1-haiku.js';
 import { stage2OpusClassify, type MemoryForClassify } from '../src/edges/stage2-opus.js';
 import { StateStore, RunSummaryWriter } from '../src/edges/state.js';
 import { runClassifier } from '../src/edges/classifier.js';
 import type { EdgeRelation } from '../src/edges/types.js';
 import { withToolSpan } from '../src/telemetry.js';
+import {
+  selectProvider,
+  isProviderName,
+  ProviderUnavailableError,
+  type ProviderName,
+} from '../src/providers/index.js';
 
 const CLASSIFIER_VERSION = 'edges-v1-2026-05-03';
 
@@ -35,6 +46,7 @@ interface CliArgs {
   maxCostUsd: number;
   dryRun: boolean;
   resumeRunId?: string;
+  providerFlag?: ProviderName;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -51,6 +63,12 @@ function parseArgs(argv: string[]): CliArgs {
       const m = raw.match(/^(\d+)d$/);
       if (!m) throw new Error(`--since must be Nd (e.g. 7d), got ${raw}`);
       out.sinceDays = Number(m[1]);
+    } else if (arg.startsWith('--provider=')) {
+      const raw = arg.split('=')[1];
+      if (!isProviderName(raw)) {
+        throw new Error(`--provider must be one of claude-code|anthropic|openrouter, got ${raw}`);
+      }
+      out.providerFlag = raw;
     }
   }
   return out;
@@ -70,19 +88,26 @@ async function main() {
   await initDb();
   const pool = getPool();
 
-  // Lazy-create the Anthropic client only for non-dry-run paths
-  let anthropic: EdgeAnthropicClient | null = null;
-  if (!args.dryRun) anthropic = new EdgeAnthropicClient();
+  // Lazy-create the provider only for non-dry-run paths. Dry-run is read-only
+  // and never calls into a provider, so don't fail if none is configured.
+  const provider = args.dryRun ? null : await selectProvider({ flag: args.providerFlag });
 
   const summary = await withToolSpan(
     'classify_edges',
-    { run_id: runId, dry_run: args.dryRun, max_cost_usd: args.maxCostUsd },
+    {
+      run_id: runId,
+      dry_run: args.dryRun,
+      max_cost_usd: args.maxCostUsd,
+      provider: provider?.name ?? 'dry-run',
+    },
     () => runClassifier(
       { runId, maxCostUsd: args.maxCostUsd, dryRun: args.dryRun, sinceDays: args.sinceDays },
       {
         classifierVersion: CLASSIFIER_VERSION,
         state,
         summaryWriter,
+        concurrencyLimit: provider?.concurrencyLimit ?? 1,
+        providerName: provider?.name,
         findCandidatePairs: (opts) => findCandidatePairs(pool, opts),
         fetchMemoryById: async (id) => {
           const r = await pool.query<MemoryForClassify>(
@@ -91,8 +116,8 @@ async function main() {
           );
           return r.rows[0] ?? null;
         },
-        stage1Filter: (pair) => stage1HaikuFilter(anthropic!, pair),
-        stage2Classify: (pair) => stage2OpusClassify(anthropic!, pair),
+        stage1Filter: (pair) => stage1HaikuFilter(provider!, pair),
+        stage2Classify: (pair) => stage2OpusClassify(provider!, pair),
         insertEdge: async (fromId, toId, relation, confidence, rationale, version) => {
           const res = await pool.query<{ id: string }>(
             `INSERT INTO memory_edges (from_memory_id, to_memory_id, relation, confidence, rationale, classifier_version)
@@ -107,8 +132,6 @@ async function main() {
           return res.rows[0].id;
         },
         estimateCost: async (pairs) => {
-          // Conservative estimate: every pair passes Stage 1 → ~80% reach Stage 2 (target hit rate)
-          // Use list prices: Stage 1 ~$0.0005, Stage 2 ~$0.018
           const stage1 = pairs.length * 0.0005;
           const stage2 = pairs.length * 0.20 * 0.018;
           return stage1 + stage2;
@@ -117,7 +140,6 @@ async function main() {
     ),
   );
 
-  // Final stdout payload (R7b — also written to run-summary file by the orchestrator)
   process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
 
   await closeDb();
@@ -125,6 +147,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stderr.write(`ERROR: ${err instanceof Error ? err.message : String(err)}\n`);
+  if (err instanceof ProviderUnavailableError) {
+    process.stderr.write(`${err.message}\n`);
+  } else {
+    process.stderr.write(`ERROR: ${err instanceof Error ? err.message : String(err)}\n`);
+  }
   process.exit(1);
 });

@@ -92,6 +92,8 @@ export interface RunSummary {
   total_cost_usd: number;
   hit_cost_cap: boolean;
   error?: string;
+  /** Active LLM provider (D.R3, surfaces in run summary). */
+  provider?: string;
 }
 
 export class RunSummaryWriter {

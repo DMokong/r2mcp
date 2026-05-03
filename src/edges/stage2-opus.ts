@@ -1,4 +1,4 @@
-import type { EdgeAnthropicClient } from './anthropic-client.js';
+import type { LLMProvider } from '../providers/types.js';
 import type { EdgeRelation } from './types.js';
 
 export interface MemoryForClassify {
@@ -63,7 +63,7 @@ export function parseStage2Response(text: string): {
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
-  } catch (err) {
+  } catch {
     throw new Error(`Stage 2 response is not JSON: ${JSON.stringify(text).slice(0, 200)}`);
   }
   if (!parsed || typeof parsed !== 'object') {
@@ -80,7 +80,7 @@ export function parseStage2Response(text: string): {
 }
 
 export async function stage2OpusClassify(
-  client: EdgeAnthropicClient,
+  provider: LLMProvider,
   pair: PairForClassify,
 ): Promise<Stage2Result> {
   if (shouldSkipForRejection(pair.from, pair.to)) {
@@ -90,8 +90,13 @@ export async function stage2OpusClassify(
     };
   }
   const userPrompt = `Memory A (id=${pair.from.id}, type=${pair.from.type}): ${pair.from.content}\n\nMemory B (id=${pair.to.id}, type=${pair.to.type}): ${pair.to.content}`;
-  const result = await client.complete('opus', STAGE2_SYSTEM, userPrompt, STAGE2_MAX_OUTPUT_TOKENS);
-  const parsed = parseStage2Response(result.text);
+  const result = await provider.complete({
+    model: 'opus',
+    system: STAGE2_SYSTEM,
+    prompt: userPrompt,
+    max_tokens: STAGE2_MAX_OUTPUT_TOKENS,
+  });
+  const parsed = parseStage2Response(result.response);
   return {
     kind: 'classified',
     relation: parsed.relation,
