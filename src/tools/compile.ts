@@ -98,14 +98,37 @@ function runSubprocess(
 }
 
 function parseSummary(stdout: string): CompileSummary {
-  // The CLI prints the JSON summary as its final stdout output. Slice it out
-  // by finding the last `}` after the last opening `{`.
-  const firstBrace = stdout.indexOf('{');
-  const lastBrace = stdout.lastIndexOf('}');
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
+  // The CLI prints the JSON summary as its final stdout output. Walk the
+  // string from the end backwards looking for a trailing `}`, then match
+  // braces to find the start of the JSON block. This is robust against the
+  // subprocess emitting earlier JSON-shaped output (dry-run previews,
+  // intermediate logging) — only the FINAL balanced object is parsed.
+  const trimmed = stdout.trimEnd();
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (lastBrace === -1) {
     throw new Error(`compile-wiki produced no parseable summary; output was:\n${stdout.slice(-500)}`);
   }
-  const json = stdout.slice(firstBrace, lastBrace + 1);
+  // Walk back, balancing braces (ignoring those inside strings).
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escapeNext = false;
+  for (let i = lastBrace; i >= 0; i--) {
+    const c = trimmed[i];
+    if (escapeNext) { escapeNext = false; continue; }
+    if (c === '\\' && inString) { escapeNext = true; continue; }
+    if (c === '"' && !escapeNext) { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === '}') depth++;
+    else if (c === '{') {
+      depth--;
+      if (depth === 0) { start = i; break; }
+    }
+  }
+  if (start === -1) {
+    throw new Error(`compile-wiki produced no parseable summary; output was:\n${stdout.slice(-500)}`);
+  }
+  const json = trimmed.slice(start, lastBrace + 1);
   return JSON.parse(json) as CompileSummary;
 }
 

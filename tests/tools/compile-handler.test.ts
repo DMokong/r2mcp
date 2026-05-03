@@ -92,4 +92,16 @@ describe('compile() MCP tool — subprocess delegation', () => {
     const spawnFn = vi.fn(() => fakeSpawn('not json output', 0)) as unknown as typeof import('node:child_process').spawn;
     await expect(compile({ tier: 'preferences' }, { spawnFn })).rejects.toThrow(/no parseable summary/);
   });
+
+  it('parses the trailing summary even when prior JSON-shaped output preceded it', async () => {
+    // The compile-wiki CLI may emit dry-run preview content that looks JSON-ish
+    // before its final summary. The parser must skip those and pick only the
+    // last balanced top-level JSON object.
+    const dryRunNoise = '{"some_other": "shape", "with": {"nested": "json"}}';
+    const trailingSummary = JSON.stringify(mockSummary(), null, 2);
+    const stdout = `${dryRunNoise}\n--- DRY RUN: ... ---\nsome random text\n${trailingSummary}\n`;
+    const spawnFn = vi.fn(() => fakeSpawn(stdout, 0)) as unknown as typeof import('node:child_process').spawn;
+    const result = await compile({ tier: 'preferences' }, { spawnFn });
+    expect(result.run_id).toBe('run-1');
+  });
 });
