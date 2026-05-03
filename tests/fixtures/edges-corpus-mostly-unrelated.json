@@ -1,0 +1,4 @@
+{
+  "_comment": "100 memories all tagged 'cindy' so most pairs share >=2 topics (cindy + a sub-tag) but most are obviously unrelated subsystems. The actual 100 memories are generated procedurally in classifier-hybrid-ratio.test.ts (this file is a placeholder for human readers).",
+  "subsystems": ["morning-brief", "email-triage", "health", "finance", "observability"]
+}

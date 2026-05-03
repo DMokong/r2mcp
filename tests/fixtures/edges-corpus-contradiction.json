@@ -1,0 +1,14 @@
+{
+  "memories": [
+    { "label": "M1", "content": "Always use library X for HTTP requests", "type": "context", "topics": ["http", "library"] },
+    { "label": "M2", "content": "Do not use library X — it is unmaintained, switch to library Y", "type": "context", "topics": ["http", "library"] },
+    { "label": "M3", "content": "Library X has middleware support for retries", "type": "context", "topics": ["http", "library"] },
+    { "label": "M4", "content": "Library X is widely used in the Node ecosystem", "type": "context", "topics": ["http", "library"] },
+    { "label": "M5", "content": "Cindy's morning-brief launchd job runs at 07:00", "type": "context", "topics": ["cindy", "launchd"] },
+    { "label": "M6", "content": "Cindy's email-triage launchd job runs at 09:00", "type": "context", "topics": ["cindy", "launchd"] },
+    { "label": "M7", "content": "Tax filing deadline is April 15", "type": "context", "topics": ["taxes"] },
+    { "label": "M8", "content": "CSS grid simplifies two-axis layouts", "type": "context", "topics": ["css"] },
+    { "label": "M9", "content": "PostgreSQL transactions use MVCC", "type": "context", "topics": ["postgres"] },
+    { "label": "M10", "content": "Docker Compose v2 uses YAML anchors for DRY config", "type": "context", "topics": ["docker"] }
+  ]
+}
