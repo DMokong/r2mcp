@@ -26,6 +26,7 @@ import { stage2OpusClassify, type MemoryForClassify } from '../src/edges/stage2-
 import { StateStore, RunSummaryWriter } from '../src/edges/state.js';
 import { runClassifier } from '../src/edges/classifier.js';
 import type { EdgeRelation } from '../src/edges/types.js';
+import { withToolSpan } from '../src/telemetry.js';
 
 const CLASSIFIER_VERSION = 'edges-v1-2026-05-03';
 
@@ -73,43 +74,47 @@ async function main() {
   let anthropic: EdgeAnthropicClient | null = null;
   if (!args.dryRun) anthropic = new EdgeAnthropicClient();
 
-  const summary = await runClassifier(
-    { runId, maxCostUsd: args.maxCostUsd, dryRun: args.dryRun, sinceDays: args.sinceDays },
-    {
-      classifierVersion: CLASSIFIER_VERSION,
-      state,
-      summaryWriter,
-      findCandidatePairs: (opts) => findCandidatePairs(pool, opts),
-      fetchMemoryById: async (id) => {
-        const r = await pool.query<MemoryForClassify>(
-          'SELECT id, content, type FROM memories WHERE id = $1',
-          [id],
-        );
-        return r.rows[0] ?? null;
+  const summary = await withToolSpan(
+    'classify_edges',
+    { run_id: runId, dry_run: args.dryRun, max_cost_usd: args.maxCostUsd },
+    () => runClassifier(
+      { runId, maxCostUsd: args.maxCostUsd, dryRun: args.dryRun, sinceDays: args.sinceDays },
+      {
+        classifierVersion: CLASSIFIER_VERSION,
+        state,
+        summaryWriter,
+        findCandidatePairs: (opts) => findCandidatePairs(pool, opts),
+        fetchMemoryById: async (id) => {
+          const r = await pool.query<MemoryForClassify>(
+            'SELECT id, content, type FROM memories WHERE id = $1',
+            [id],
+          );
+          return r.rows[0] ?? null;
+        },
+        stage1Filter: (pair) => stage1HaikuFilter(anthropic!, pair),
+        stage2Classify: (pair) => stage2OpusClassify(anthropic!, pair),
+        insertEdge: async (fromId, toId, relation, confidence, rationale, version) => {
+          const res = await pool.query<{ id: string }>(
+            `INSERT INTO memory_edges (from_memory_id, to_memory_id, relation, confidence, rationale, classifier_version)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (from_memory_id, to_memory_id, relation) DO UPDATE
+               SET confidence = EXCLUDED.confidence,
+                   rationale = EXCLUDED.rationale,
+                   updated_at = NOW()
+             RETURNING id`,
+            [fromId, toId, relation as EdgeRelation, confidence, rationale, version],
+          );
+          return res.rows[0].id;
+        },
+        estimateCost: async (pairs) => {
+          // Conservative estimate: every pair passes Stage 1 → ~80% reach Stage 2 (target hit rate)
+          // Use list prices: Stage 1 ~$0.0005, Stage 2 ~$0.018
+          const stage1 = pairs.length * 0.0005;
+          const stage2 = pairs.length * 0.20 * 0.018;
+          return stage1 + stage2;
+        },
       },
-      stage1Filter: (pair) => stage1HaikuFilter(anthropic!, pair),
-      stage2Classify: (pair) => stage2OpusClassify(anthropic!, pair),
-      insertEdge: async (fromId, toId, relation, confidence, rationale, version) => {
-        const res = await pool.query<{ id: string }>(
-          `INSERT INTO memory_edges (from_memory_id, to_memory_id, relation, confidence, rationale, classifier_version)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT (from_memory_id, to_memory_id, relation) DO UPDATE
-             SET confidence = EXCLUDED.confidence,
-                 rationale = EXCLUDED.rationale,
-                 updated_at = NOW()
-           RETURNING id`,
-          [fromId, toId, relation as EdgeRelation, confidence, rationale, version],
-        );
-        return res.rows[0].id;
-      },
-      estimateCost: async (pairs) => {
-        // Conservative estimate: every pair passes Stage 1 → ~80% reach Stage 2 (target hit rate)
-        // Use list prices: Stage 1 ~$0.0005, Stage 2 ~$0.018
-        const stage1 = pairs.length * 0.0005;
-        const stage2 = pairs.length * 0.20 * 0.018;
-        return stage1 + stage2;
-      },
-    },
+    ),
   );
 
   // Final stdout payload (R7b — also written to run-summary file by the orchestrator)
