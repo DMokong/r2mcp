@@ -40,3 +40,40 @@ BEGIN
   ALTER TABLE memories ADD CONSTRAINT memories_type_check
     CHECK (type IN ('preference', 'decision', 'context', 'relationship', 'observation', 'rejection', 'archived'));
 END $$;
+
+-- ============================================================================
+-- SPEC-043: memory_edges — typed relations between memories (Phase 1 wiki-mode)
+-- Mirrors OB1's thought_edges shape for future convergence.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS memory_edges (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_memory_id      UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  to_memory_id        UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  relation            TEXT NOT NULL CHECK (relation IN (
+                        'supports', 'contradicts', 'supersedes',
+                        'evolved_into', 'depends_on', 'related_to'
+                      )),
+  confidence          NUMERIC(3,2) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+  rationale           TEXT NOT NULL,
+  classifier_version  TEXT NOT NULL,
+  valid_from          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  valid_until         TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT memory_edges_no_self CHECK (from_memory_id <> to_memory_id),
+  CONSTRAINT memory_edges_unique UNIQUE (from_memory_id, to_memory_id, relation)
+);
+
+-- Outgoing-edge lookup (used by recall() signals query AND Phase 2 compile)
+CREATE INDEX IF NOT EXISTS idx_edges_from
+  ON memory_edges (from_memory_id, relation);
+
+-- Incoming-edge lookup (used by recall() reverse signals AND Phase 2 compile)
+CREATE INDEX IF NOT EXISTS idx_edges_to
+  ON memory_edges (to_memory_id, relation);
+
+-- Partial index for currently-valid edges (used by Phase 3 lint)
+CREATE INDEX IF NOT EXISTS idx_edges_currently_valid
+  ON memory_edges (relation, from_memory_id)
+  WHERE valid_until IS NULL;
