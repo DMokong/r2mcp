@@ -91,6 +91,49 @@ describe('runClassifier — dry-run', () => {
   });
 });
 
+describe('runClassifier — counter invariants', () => {
+  it('stage1_total = stage1_pass + stage1_skip on a mixed run', async () => {
+    const pairs: CandidatePair[] = [
+      { from_id: 'a', to_id: 'b', shared_topics: ['t'], shared_people: [] },
+      { from_id: 'a', to_id: 'c', shared_topics: ['t'], shared_people: [] },
+      { from_id: 'b', to_id: 'c', shared_topics: ['t'], shared_people: [] },
+    ];
+    // Pair 1 → Stage 1 PASS → Stage 2 classifies related_to (no edge written, confidence 0.4 > 0)
+    // Pair 2 → Stage 1 NO → haiku_skip
+    // Pair 3 → Stage 1 PASS → pre-Stage-2 cap fires (0.0415 + 0.04 = 0.0815 > 0.045)
+    let s1Calls = 0;
+    const deps = makeDeps({
+      findCandidatePairs: vi.fn().mockResolvedValue(pairs),
+      stage1Filter: vi.fn(async () => {
+        s1Calls++;
+        // Call 2 (pair 2) → skip; calls 1 and 3 → pass
+        return s1Calls === 2
+          ? { pass: false, comment: 'no', cost_usd: 0.0005 }
+          : { pass: true,  comment: 'ok', cost_usd: 0.0005 };
+      }),
+      stage2Classify: vi.fn(async () => ({
+        kind: 'classified' as const,
+        relation: 'related_to' as const,
+        confidence: 0.4,
+        rationale: 'r',
+        cost_usd: 0.04,
+      })),
+    });
+    // Cap = 0.045:
+    //   Pair 1: S1 0.0005 (total=0.0005), S2 pre-check 0.0005+0.04=0.0405 ≤ 0.045 → S2 runs, cost 0.04 (total=0.0405)
+    //   Pair 2: S1 pre-check 0.0405+0.0005=0.041 ≤ 0.045 → S1 runs, skip, cost 0.0005 (total=0.041)
+    //   Pair 3: S1 pre-check 0.041+0.0005=0.0415 ≤ 0.045 → S1 runs, pass, cost 0.0005 (total=0.0415)
+    //           S2 pre-check 0.0415+0.04=0.0815 > 0.045 → cap_reached, break
+    const summary = await runClassifier({ runId: 'rmix', maxCostUsd: 0.045, dryRun: false }, deps);
+    expect(summary.stage1_pass + summary.stage1_skip).toBe(summary.stage1_total);
+    expect(summary.stage1_total).toBe(3);
+    expect(summary.stage1_pass).toBe(2);
+    expect(summary.stage1_skip).toBe(1);
+    expect(summary.stage2_total).toBe(1);
+    expect(summary.hit_cost_cap).toBe(true);
+  });
+});
+
 describe('runClassifier — rejection-skip records terminal stage', () => {
   it('marks rejection-skip pairs as terminal in state', async () => {
     const pairs: CandidatePair[] = [

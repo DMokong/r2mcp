@@ -31,6 +31,11 @@ export interface RunOptions {
   sinceDays?: number;
 }
 
+// Conservative pre-call cost estimates per stage (USD).
+// Ground truth lives in EdgeAnthropicClient.priceForTokens; revisit if pricing changes.
+const STAGE1_EST_COST_USD = 0.0005;
+const STAGE2_EST_COST_USD = 0.04;
+
 export async function runClassifier(opts: RunOptions, deps: ClassifierDeps): Promise<RunSummary> {
   const startedAt = new Date().toISOString();
   const candidates = await deps.findCandidatePairs({ sinceDays: opts.sinceDays });
@@ -84,8 +89,7 @@ export async function runClassifier(opts: RunOptions, deps: ClassifierDeps): Pro
     if (!fromMem || !toMem) continue;
 
     // Pre-call cap check for Stage 1
-    const stage1EstCost = 0.0005;
-    if (totalCost + stage1EstCost > opts.maxCostUsd) {
+    if (totalCost + STAGE1_EST_COST_USD > opts.maxCostUsd) {
       hitCap = true;
       await deps.state.append({ run_id: opts.runId, pair_hash: ph, stage: 'cap_reached', timestamp: new Date().toISOString() });
       break pairLoop;
@@ -105,8 +109,7 @@ export async function runClassifier(opts: RunOptions, deps: ClassifierDeps): Pro
     await deps.state.append({ run_id: opts.runId, pair_hash: ph, stage: 'haiku_pass', timestamp: new Date().toISOString(), cost_usd: s1.cost_usd });
 
     // Pre-call cap check for Stage 2
-    const stage2EstCost = 0.04;
-    if (totalCost + stage2EstCost > opts.maxCostUsd) {
+    if (totalCost + STAGE2_EST_COST_USD > opts.maxCostUsd) {
       hitCap = true;
       await deps.state.append({ run_id: opts.runId, pair_hash: ph, stage: 'cap_reached', timestamp: new Date().toISOString() });
       break pairLoop;
