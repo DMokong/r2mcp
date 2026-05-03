@@ -1,6 +1,8 @@
 import { getPool } from '../db.js';
 import { embedText } from '../embeddings.js';
 import pgvector from 'pgvector';
+import { getSignalsForMemoryIds } from '../edges/signals.js';
+import type { RecallSignal } from '../edges/types.js';
 
 const { toSql } = pgvector;
 
@@ -46,6 +48,7 @@ export interface RecallResponse {
   tiers_searched: string[];
   tokens_used?: number;
   early_stopped?: boolean;
+  signals?: RecallSignal[];
 }
 
 export interface RecallInput {
@@ -388,6 +391,9 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
     tokensUsed = finalResults.reduce((sum, r) => sum + estimateTokens(r.content), 0);
   }
 
+  const ids = finalResults.map(r => r.id);
+  const signals = await getSignalsForMemoryIds(pool, ids);
+
   return {
     results: finalResults.map(stripInternal),
     query,
@@ -396,5 +402,6 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
     tiers_searched: tiersSearched,
     tokens_used: tokensUsed,
     early_stopped: earlyStopped,
+    signals,
   };
 }
