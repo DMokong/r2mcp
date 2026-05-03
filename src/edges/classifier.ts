@@ -37,7 +37,6 @@ export async function runClassifier(opts: RunOptions, deps: ClassifierDeps): Pro
 
   // Resume: skip terminal pair_hashes
   const terminals = await deps.state.terminalPairs(opts.runId);
-  await deps.state.markActiveRun(opts.runId);
 
   let stage1Total = 0;
   let stage1Pass = 0;
@@ -71,6 +70,9 @@ export async function runClassifier(opts: RunOptions, deps: ClassifierDeps): Pro
     // Note: dry-run does NOT write the summary file (AC4 requires no state mutation).
     return summary;
   }
+
+  // Mark active run only for real runs (AC4: dry-run is read-only)
+  await deps.state.markActiveRun(opts.runId);
 
   // Real run
   pairLoop: for (const cand of candidates) {

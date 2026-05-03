@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runClassifier, type ClassifierDeps } from '../../src/edges/classifier.js';
@@ -87,6 +87,7 @@ describe('runClassifier — dry-run', () => {
     expect((deps.stage1Filter as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
     expect((deps.stage2Classify as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
     expect((deps.insertEdge as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    expect(existsSync(join(tmp, 's.last-run'))).toBe(false);
   });
 });
 
