@@ -13,6 +13,8 @@ import { search } from './tools/search.js';
 import { stats } from './tools/stats.js';
 import { reject } from './tools/reject.js';
 import { meditate } from './tools/meditate.js';
+import { compile } from './tools/compile.js';
+import { lint } from './tools/lint.js';
 import { withToolSpan } from './telemetry.js';
 
 // Load .env from project root — MCP servers don't inherit parent env vars
@@ -194,14 +196,86 @@ server.tool(
   {
     mode: z.enum(['full']).default('full'),
     dry_run: z.boolean().optional().default(false),
+    include_lint: z.boolean().optional().default(false),
   },
   async (args) => {
     const result = await withToolSpan('meditate', {
       mode: args.mode,
       dry_run: args.dry_run,
+      include_lint: args.include_lint,
     }, async (span) => {
-      const r = await meditate({ mode: args.mode, dry_run: args.dry_run }, PROJECT_ROOT);
+      const r = await meditate(
+        { mode: args.mode, dry_run: args.dry_run, include_lint: args.include_lint },
+        PROJECT_ROOT,
+      );
       span.setAttribute('entries_affected', r.total_changes ?? 0);
+      return r;
+    });
+
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.tool(
+  'compile',
+  'Regenerate the wiki view of memory — synthesize tier or topic markdown from pgvector. Output to memory/compiled/. Modes: tier (single tier), all (three tiers), topic (per-topic page), dry_run (preview to stdout).',
+  {
+    tier: z.enum(['preferences', 'project-context', 'conversations']).optional(),
+    all: z.boolean().optional(),
+    topic: z.string().optional(),
+    dry_run: z.boolean().optional(),
+    max_cost_usd: z.number().optional(),
+    provider: z.enum(['claude-code', 'anthropic', 'openrouter']).optional(),
+  },
+  async (args) => {
+    const result = await withToolSpan('compile', {
+      scope: args.tier ?? args.topic ?? (args.all ? 'all' : 'unknown'),
+      dry_run: args.dry_run ?? false,
+    }, async (span) => {
+      const r = await compile({
+        tier: args.tier,
+        all: args.all,
+        topic: args.topic,
+        dry_run: args.dry_run,
+        max_cost_usd: args.max_cost_usd,
+        provider: args.provider,
+      }, { cwd: PROJECT_ROOT });
+      span.setAttribute('files_written', r.files_written.length);
+      span.setAttribute('hit_cost_cap', r.hit_cost_cap);
+      span.setAttribute('provider', r.provider);
+      return r;
+    });
+
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.tool(
+  'lint',
+  'Surface structural feedback on the memory store: contradictions, stale, orphans, drift, superseded_unflagged. SQL-only (no LLM calls). Pass `fix: true` to apply auto-fixes for findings with confidence >= 0.9.',
+  {
+    check: z.enum(['contradictions', 'stale', 'orphans', 'drift', 'superseded_unflagged']).optional(),
+    since_days: z.number().optional(),
+    limit: z.number().optional(),
+    fix: z.boolean().optional(),
+  },
+  async (args) => {
+    const result = await withToolSpan('lint', {
+      check: args.check ?? 'all',
+      fix: args.fix ?? false,
+    }, async (span) => {
+      const r = await lint({
+        check: args.check,
+        since_days: args.since_days,
+        limit: args.limit,
+        fix: args.fix,
+      });
+      span.setAttribute('total_findings', r.summary.total_findings);
+      span.setAttribute('fixes_applied', r.fixes_applied?.length ?? 0);
       return r;
     });
 

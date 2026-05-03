@@ -1,4 +1,4 @@
-import type { EdgeAnthropicClient } from './anthropic-client.js';
+import type { LLMProvider } from '../providers/types.js';
 
 export interface PairForFilter {
   from: { id: string; content: string };
@@ -34,11 +34,16 @@ export function parseStage1Response(text: string): { pass: boolean; comment: str
 }
 
 export async function stage1HaikuFilter(
-  client: EdgeAnthropicClient,
+  provider: LLMProvider,
   pair: PairForFilter,
 ): Promise<Stage1Result> {
   const userPrompt = `Memory A (id=${pair.from.id}): ${pair.from.content}\n\nMemory B (id=${pair.to.id}): ${pair.to.content}`;
-  const result = await client.complete('haiku', STAGE1_SYSTEM, userPrompt, STAGE1_MAX_OUTPUT_TOKENS);
-  const parsed = parseStage1Response(result.text);
+  const result = await provider.complete({
+    model: 'haiku',
+    system: STAGE1_SYSTEM,
+    prompt: userPrompt,
+    max_tokens: STAGE1_MAX_OUTPUT_TOKENS,
+  });
+  const parsed = parseStage1Response(result.response);
   return { pass: parsed.pass, comment: parsed.comment, cost_usd: result.cost_usd };
 }
