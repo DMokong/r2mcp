@@ -14,6 +14,11 @@ export async function teardownEdgesTestDb() {
   await closeDb();
 }
 
+export async function resetEdgesTestDb(pool: import('pg').Pool) {
+  await pool.query('DELETE FROM memory_edges');
+  await pool.query('DELETE FROM memories');
+}
+
 export async function insertTestMemory(
   pool: import('pg').Pool,
   content: string,

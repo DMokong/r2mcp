@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { setupEdgesTestDb, teardownEdgesTestDb, insertTestMemory } from './setup.js';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { setupEdgesTestDb, teardownEdgesTestDb, insertTestMemory, resetEdgesTestDb } from './setup.js';
 import { recall } from '../../src/tools/recall.js';
 import type pg from 'pg';
 
@@ -7,6 +7,7 @@ let pool: pg.Pool;
 
 beforeAll(async () => { pool = await setupEdgesTestDb(); });
 afterAll(async () => { await teardownEdgesTestDb(); });
+beforeEach(async () => { await resetEdgesTestDb(pool); });
 
 describe('recall() backward compatibility (AC9)', () => {
   it('no-edges run: signals is empty array, all pre-existing fields unchanged', async () => {

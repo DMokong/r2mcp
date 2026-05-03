@@ -48,6 +48,7 @@ export interface RecallResponse {
   tiers_searched: string[];
   tokens_used?: number;
   early_stopped?: boolean;
+  /** Always present in v1.1+; optional for backward-compat with pre-edges client types. */
   signals?: RecallSignal[];
 }
 

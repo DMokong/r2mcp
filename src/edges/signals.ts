@@ -4,8 +4,8 @@ import type { RecallSignal } from './types.js';
 /**
  * Build the signals[] array for a recall response. For every returned memory ID:
  * - emit a `contradicts` signal for each outgoing `contradicts` edge
- * - emit a `superseded_by` signal for each outgoing `supersedes` edge (the from is the older one being superseded)
- *   AND for each incoming `supersedes` edge (the to is the newer one that supersedes the from)
+ * - emit a `superseded_by` signal for each outgoing `supersedes` edge (returned memory is the newer one; signal's `from_id` will be the DB row's `to_memory_id`)
+ *   AND for each incoming `supersedes` edge (returned memory is the older one; signal's `from_id` will be its own ID)
  *
  * Direction semantics: in the DB, `(from=newer, to=older, relation=supersedes)` means
  * "newer supersedes older". The recall signal `superseded_by` always points
@@ -22,7 +22,7 @@ export async function getSignalsForMemoryIds(
     from_memory_id: string; to_memory_id: string;
     rationale: string; confidence: string;
   }>(
-    `SELECT from_memory_id, to_memory_id, rationale, confidence::text
+    `SELECT from_memory_id, to_memory_id, rationale, confidence
      FROM memory_edges
      WHERE from_memory_id = ANY($1) AND relation = 'contradicts' AND valid_until IS NULL`,
     [memoryIds],
@@ -33,7 +33,7 @@ export async function getSignalsForMemoryIds(
     from_memory_id: string; to_memory_id: string;
     rationale: string; confidence: string;
   }>(
-    `SELECT from_memory_id, to_memory_id, rationale, confidence::text
+    `SELECT from_memory_id, to_memory_id, rationale, confidence
      FROM memory_edges
      WHERE (from_memory_id = ANY($1) OR to_memory_id = ANY($1))
        AND relation = 'supersedes' AND valid_until IS NULL`,
