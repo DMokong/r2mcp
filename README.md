@@ -187,3 +187,35 @@ R2MCP_DATABASE_URL=<your-new-url> npx tsx scripts/migrate.ts /path/to/your/memor
 ```
 
 The migration script reads `preferences.md`, `project-context.md`, and `conversations.md` from the specified directory and imports them. It's idempotent — safe to re-run.
+
+## Memory edges (SPEC-043)
+
+r2mcp supports a typed-relation table (`memory_edges`) that captures structural
+relations between memories — `contradicts`, `supersedes`, `supports`, etc. The
+`recall()` MCP tool surfaces `contradicts` / `superseded_by` relations as a new
+optional `signals[]` field on the response (additive — existing clients work
+unchanged).
+
+### Running the classifier
+
+The classifier is a manual batch process — it is NOT invoked from the MCP server
+hot path. Set `ANTHROPIC_API_KEY` (separate from `R2MCP_OPENROUTER_API_KEY`,
+which remains scoped to embeddings).
+
+```bash
+# Estimate cost without making API calls or writing edges
+npm run edges:classify -- --dry-run
+
+# Full run with a $1 cap
+npm run edges:classify -- --max-cost=1.00
+
+# Incremental run on memories from the last 7 days
+npm run edges:classify -- --since=7d --max-cost=0.25
+
+# Resume a prior run that hit its cap (the run_id is printed at exit and stored in
+# data/edges-state.last-run)
+npm run edges:classify -- --resume=<run_id>
+```
+
+State and run summaries are written under `data/edges-state.*` (JSONL append-log,
+last-run sidecar, per-run JSON summary at `data/edges-state.runs/<run_id>.json`).
