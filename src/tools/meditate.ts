@@ -1,9 +1,17 @@
 import { getPool } from '../db.js';
 import { triggerGraphRebuild } from '../graph-rebuild.js';
+import { runLint } from '../lint/run.js';
+import type { LintFinding } from '../lint/types.js';
 
 export interface MeditateInput {
   mode: 'full';
   dry_run: boolean;
+  /**
+   * SPEC-044 C.R4 — opt-in lint integration. Default false for backward
+   * compatibility with existing direct callers (Slack bot, programmatic).
+   * When true, lint runs and findings are surfaced in `lint_findings`.
+   */
+  include_lint?: boolean;
 }
 
 export interface MeditateResult {
@@ -13,6 +21,11 @@ export interface MeditateResult {
   clustered: number;
   gaps_found: number;
   total_changes: number;
+  /**
+   * Populated only when input.include_lint is true. Absent (undefined) for
+   * default callers — preserves the byte-identical default response shape.
+   */
+  lint_findings?: LintFinding[];
 }
 
 export async function meditate(input: MeditateInput, projectRoot?: string): Promise<MeditateResult> {
@@ -38,7 +51,7 @@ export async function meditate(input: MeditateInput, projectRoot?: string): Prom
     triggerGraphRebuild(projectRoot);
   }
 
-  return {
+  const result: MeditateResult = {
     archived,
     deduplicated,
     cross_referenced,
@@ -46,6 +59,13 @@ export async function meditate(input: MeditateInput, projectRoot?: string): Prom
     gaps_found,
     total_changes: archived + deduplicated,
   };
+
+  if (input.include_lint) {
+    const lintResult = await runLint({}, pool);
+    result.lint_findings = lintResult.findings;
+  }
+
+  return result;
 }
 
 /**
