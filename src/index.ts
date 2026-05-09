@@ -285,10 +285,37 @@ server.tool(
   }
 );
 
+/**
+ * Exit when the parent client disconnects.
+ *
+ * MCP transport is stdio — the parent (Claude Code, Slack bot, etc.) owns
+ * this subprocess via a private pipe. When the parent exits cleanly it
+ * sends SIGTERM and we never reach this path. When the parent crashes
+ * (force-quit, SSH disconnect, kernel OOM), the pipe closes silently and
+ * we'd otherwise sit forever waiting for input that never comes —
+ * holding a Postgres connection slot for nothing.
+ *
+ * Watching `stdin` for `end` (EOF) catches both clean and crashed parents.
+ * Watching `stdout` for EPIPE covers the rarer "we tried to write back
+ * after the parent disappeared" case.
+ */
+function wireParentDisconnectHandlers(): void {
+  const exit = (reason: string) => {
+    console.error(`r2mcp exiting: ${reason}`);
+    process.exit(0);
+  };
+  process.stdin.on('end', () => exit('parent disconnected (stdin EOF)'));
+  process.stdin.on('close', () => exit('parent disconnected (stdin closed)'));
+  process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EPIPE') exit('parent disconnected (stdout EPIPE)');
+  });
+}
+
 async function main() {
   await initDb();
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  wireParentDisconnectHandlers();
   console.error('r2mcp running on stdio');
 }
 
