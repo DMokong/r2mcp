@@ -12,10 +12,12 @@ let pool: pg.Pool;
 beforeAll(async () => { pool = await setupEdgesTestDb(); });
 afterAll(async () => { await teardownEdgesTestDb(); });
 
-describe('classifier rejection-skip end-to-end (AC10)', () => {
-  it('rejection memories produce no edges, log skip, mark state terminal', async () => {
+describe('classifier rejection-handling end-to-end (AC10)', () => {
+  it('rejection pairs CAN form non-contradicts edges; LLM contradicts on rejection pair gets downgraded', async () => {
     const R1 = await insertTestMemory(pool, 'do not add fallback handlers for internal functions', 'rejection', ['code-style', 'error-handling']);
     const P1 = await insertTestMemory(pool, 'we use try/catch with explicit re-raise for the database layer', 'context', ['code-style', 'error-handling']);
+    const R2 = await insertTestMemory(pool, 'do not commit dev tokens to the repo', 'rejection', ['security', 'secrets']);
+    const C2 = await insertTestMemory(pool, 'we commit fake test tokens for snapshot stability', 'context', ['security', 'secrets']);
     const A  = await insertTestMemory(pool, 'use library X for HTTP', 'context', ['http', 'library']);
     const B  = await insertTestMemory(pool, 'do not use library X — deprecated', 'context', ['http', 'library']);
 
@@ -45,10 +47,26 @@ describe('classifier rejection-skip end-to-end (AC10)', () => {
           },
           stage1Filter: vi.fn().mockResolvedValue({ pass: true, comment: '', cost_usd: 0 }),
           stage2Classify: async (pair) => {
-            // Replicate the rejection-skip rule inline so this test does not need a real Anthropic client.
-            // The production path uses stage2OpusClassify which calls shouldSkipForRejection internally.
-            if (pair.from.type === 'rejection' || pair.to.type === 'rejection') {
-              return { kind: 'rejection_skip', reason: 'rejection memories are out-of-vocabulary' };
+            const aRej = pair.from.type === 'rejection';
+            const bRej = pair.to.type === 'rejection';
+            const isRej = aRej || bRej;
+            // Mock the production AC10 guard semantics:
+            // - For (R1, P1): LLM returns related_to (good behavior).
+            //   The classifier writes a related_to edge.
+            // - For (R2, C2): LLM returns contradicts (bad behavior).
+            //   The post-call guard downgrades to none, no edge written.
+            // - For (A, B): non-rejection pair, classifier writes contradicts edge.
+            const isR1P1 = (pair.from.id === R1 && pair.to.id === P1) || (pair.from.id === P1 && pair.to.id === R1);
+            const isR2C2 = (pair.from.id === R2 && pair.to.id === C2) || (pair.from.id === C2 && pair.to.id === R2);
+            if (isR1P1) {
+              return { kind: 'classified', relation: 'related_to', confidence: 0.78, rationale: 'both about error-handling code style', cost_usd: 0 };
+            }
+            if (isR2C2) {
+              // Simulates LLM violating the rule; production guard downgrades.
+              return { kind: 'classified', relation: 'none', confidence: 0.85, rationale: '[AC10] downgraded contradicts→none for rejection pair', cost_usd: 0, downgraded: true };
+            }
+            if (isRej) {
+              return { kind: 'classified', relation: 'none', confidence: 0, rationale: 'distinct', cost_usd: 0 };
             }
             return { kind: 'classified', relation: 'contradicts', confidence: 0.85, rationale: 'mocked', cost_usd: 0 };
           },
@@ -63,14 +81,22 @@ describe('classifier rejection-skip end-to-end (AC10)', () => {
         },
       );
 
-      // No edges involving rejection memory
-      const rejEdges = await pool.query(
-        'SELECT count(*)::int AS c FROM memory_edges WHERE $1 IN (from_memory_id, to_memory_id)',
-        [R1],
+      // (R1, P1) rejection-pair gets a related_to edge — the AC10 fix's whole point
+      const rejPairEdge = await pool.query(
+        `SELECT count(*)::int AS c FROM memory_edges
+         WHERE relation='related_to' AND ((from_memory_id=$1 AND to_memory_id=$2) OR (from_memory_id=$2 AND to_memory_id=$1))`,
+        [R1, P1],
       );
-      expect(rejEdges.rows[0].c).toBe(0);
+      expect(rejPairEdge.rows[0].c).toBe(1);
 
-      // The (A,B) non-rejection pair did get classified into a contradicts edge
+      // (R2, C2) downgraded pair produces NO edge (guard kicked in)
+      const downgradedEdges = await pool.query(
+        'SELECT count(*)::int AS c FROM memory_edges WHERE $1 IN (from_memory_id, to_memory_id) AND $2 IN (from_memory_id, to_memory_id)',
+        [R2, C2],
+      );
+      expect(downgradedEdges.rows[0].c).toBe(0);
+
+      // (A, B) non-rejection contradicts edge unchanged
       const realEdge = await pool.query(
         `SELECT count(*)::int AS c FROM memory_edges
          WHERE relation='contradicts' AND ((from_memory_id=$1 AND to_memory_id=$2) OR (from_memory_id=$2 AND to_memory_id=$1))`,
@@ -78,16 +104,17 @@ describe('classifier rejection-skip end-to-end (AC10)', () => {
       );
       expect(realEdge.rows[0].c).toBe(1);
 
-      // State has a terminal rejection_skip stage for the (R1,P1) pair
+      // State terminal for both rejection-pair runs (no rejection_skip stage anymore — opus_complete instead)
       const terminals = await state.terminalPairs('test-ac10');
       expect(terminals.has(pairHash(R1, P1))).toBe(true);
+      expect(terminals.has(pairHash(R2, C2))).toBe(true);
 
-      // Stdout contains the AC10-required SKIP log line
+      // Stdout has the AC10 GUARD log for the downgraded pair
       const stdout = writes.join('');
-      expect(stdout).toMatch(/SKIP rejection-pair.*memory_id/);
+      expect(stdout).toMatch(/AC10 GUARD: downgraded contradicts→none/);
 
-      // Summary recorded
-      expect(summary.edges_written).toBeGreaterThanOrEqual(1);
+      // Summary records edges (R1,P1 related_to + A,B contradicts = at least 2)
+      expect(summary.edges_written).toBeGreaterThanOrEqual(2);
     } finally {
       (process.stdout as unknown as { write: typeof origWrite }).write = origWrite;
       rmSync(dataDir, { recursive: true, force: true });

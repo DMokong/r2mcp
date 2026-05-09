@@ -1,17 +1,16 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
-import { getPool, initDb, closeDb } from '../../src/db.js';
+import { getPool } from '../../src/db.js';
+import { setupTestDb, teardownTestDb } from '../setup.js';
 import { meditate } from '../../src/tools/meditate.js';
 import { fingerprint } from '../../src/fingerprint.js';
 
 describe('meditate', () => {
   beforeEach(async () => {
-    await initDb();
-    const pool = getPool();
-    await pool.query('DELETE FROM memories');
+    await setupTestDb();
   });
 
   afterAll(async () => {
-    await closeDb();
+    await teardownTestDb();
   });
 
   it('archives stale conversations entries', async () => {

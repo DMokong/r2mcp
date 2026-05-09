@@ -13,8 +13,7 @@ export interface PairForClassify {
 }
 
 export type Stage2Result =
-  | { kind: 'rejection_skip'; reason: string }
-  | { kind: 'classified'; relation: EdgeRelation | 'none'; confidence: number; rationale: string; cost_usd: number };
+  | { kind: 'classified'; relation: EdgeRelation | 'none'; confidence: number; rationale: string; cost_usd: number; downgraded?: boolean };
 
 export const STAGE2_RELATIONS: ReadonlyArray<EdgeRelation | 'none'> = [
   'supports', 'contradicts', 'supersedes', 'evolved_into', 'depends_on', 'related_to', 'none',
@@ -35,6 +34,8 @@ Use "supersedes" with from=A=newer, to=B=older.
 
 Use "contradicts" only for genuinely conflicting claims. Do NOT mark superseded pairs as contradictions.
 
+Rejection-typed memories rule: if memory A or B has type=rejection, you must NOT use "contradicts". A rejection ("don't do X") is a meta-statement about what to avoid, not a factual claim that can conflict with another claim. For rejection-involving pairs, prefer "related_to", "evolved_into", "supersedes", "depends_on", or "none".
+
 Avoid "related_to" unless you are sure no stronger relation fits — it is the weakest signal.
 
 Reply with a single JSON object: {"relation": <one of the seven>, "confidence": <0..1>, "rationale": "<one sentence>"}`;
@@ -42,11 +43,16 @@ Reply with a single JSON object: {"relation": <one of the seven>, "confidence": 
 const STAGE2_MAX_OUTPUT_TOKENS = 256;
 
 /**
- * AC10: rejection-typed memories are out-of-vocabulary for contradicts (and for
- * structural classification in general — they are standalone facts, not nodes).
- * Skip if EITHER memory in the pair is a rejection.
+ * AC10: rejection-typed memories are out-of-vocabulary for the `contradicts` relation
+ * (a rejection is a meta-statement, not a factual claim). They CAN participate in
+ * other relations like related_to, evolved_into, supersedes — a rejection often
+ * pairs with a preference saying the same thing in positive form.
+ *
+ * Used by stage2OpusClassify as a post-call guard: if the LLM returns "contradicts"
+ * for a rejection pair (despite being instructed otherwise in the system prompt),
+ * the result is downgraded to "none".
  */
-export function shouldSkipForRejection(
+export function isRejectionPair(
   a: { type: string },
   b: { type: string },
 ): boolean {
@@ -83,12 +89,6 @@ export async function stage2OpusClassify(
   provider: LLMProvider,
   pair: PairForClassify,
 ): Promise<Stage2Result> {
-  if (shouldSkipForRejection(pair.from, pair.to)) {
-    return {
-      kind: 'rejection_skip',
-      reason: 'rejection memories are out-of-vocabulary for contradicts (AC10)',
-    };
-  }
   const userPrompt = `Memory A (id=${pair.from.id}, type=${pair.from.type}): ${pair.from.content}\n\nMemory B (id=${pair.to.id}, type=${pair.to.type}): ${pair.to.content}`;
   const result = await provider.complete({
     model: 'opus',
@@ -97,6 +97,20 @@ export async function stage2OpusClassify(
     max_tokens: STAGE2_MAX_OUTPUT_TOKENS,
   });
   const parsed = parseStage2Response(result.response);
+
+  // AC10 guard: if the LLM returns contradicts despite being told not to for rejection
+  // pairs, downgrade to 'none'. The system prompt is the primary defense; this is a fallback.
+  if (parsed.relation === 'contradicts' && isRejectionPair(pair.from, pair.to)) {
+    return {
+      kind: 'classified',
+      relation: 'none',
+      confidence: parsed.confidence,
+      rationale: `[AC10] downgraded contradicts→none for rejection pair; original rationale: ${parsed.rationale}`,
+      cost_usd: result.cost_usd,
+      downgraded: true,
+    };
+  }
+
   return {
     kind: 'classified',
     relation: parsed.relation,

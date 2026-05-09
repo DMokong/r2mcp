@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   stage2OpusClassify,
   parseStage2Response,
-  shouldSkipForRejection,
+  isRejectionPair,
 } from '../../src/edges/stage2-opus.js';
 import type { LLMProvider } from '../../src/providers/types.js';
 
@@ -20,16 +20,16 @@ function makeMockProvider(response: string, cost_usd: number): LLMProvider {
   };
 }
 
-describe('shouldSkipForRejection (AC10)', () => {
-  it('skips when either memory is type=rejection', () => {
-    expect(shouldSkipForRejection({ type: 'rejection' }, { type: 'context' })).toBe(true);
-    expect(shouldSkipForRejection({ type: 'context' }, { type: 'rejection' })).toBe(true);
+describe('isRejectionPair (AC10)', () => {
+  it('detects pairs where either memory is type=rejection', () => {
+    expect(isRejectionPair({ type: 'rejection' }, { type: 'context' })).toBe(true);
+    expect(isRejectionPair({ type: 'context' }, { type: 'rejection' })).toBe(true);
   });
-  it('skips when both are rejection (per-memory rule)', () => {
-    expect(shouldSkipForRejection({ type: 'rejection' }, { type: 'rejection' })).toBe(true);
+  it('detects pairs where both are rejection', () => {
+    expect(isRejectionPair({ type: 'rejection' }, { type: 'rejection' })).toBe(true);
   });
-  it('does not skip plain context pairs', () => {
-    expect(shouldSkipForRejection({ type: 'context' }, { type: 'context' })).toBe(false);
+  it('returns false for plain context pairs', () => {
+    expect(isRejectionPair({ type: 'context' }, { type: 'context' })).toBe(false);
   });
 });
 
@@ -73,18 +73,38 @@ describe('stage2OpusClassify (R4)', () => {
     expect(result.cost_usd).toBeCloseTo(0.0165, 6);
   });
 
-  it('returns rejection_skip without calling the API for rejection memories (AC10)', async () => {
-    const provider: LLMProvider = {
-      name: 'anthropic',
-      concurrencyLimit: 10,
-      complete: vi.fn(),
-    };
+  it('classifies rejection pairs via the LLM and returns non-contradicts relations (AC10)', async () => {
+    // brew-deps fixture pattern: a rejection and a preference saying the same
+    // thing in opposite framing. The LLM should recognize them as related_to or evolved_into.
+    const provider = makeMockProvider(
+      '{"relation":"related_to","confidence":0.78,"rationale":"both about brew deps tree check"}',
+      0.014,
+    );
     const result = await stage2OpusClassify(provider, {
-      from: { id: 'r1', content: 'do not add fallback handlers', type: 'rejection' },
-      to:   { id: 'p1', content: 'we use try/catch with re-raise', type: 'context' },
+      from: { id: 'r1', content: 'do NOT install brew formulae without checking deps', type: 'rejection' },
+      to:   { id: 'p1', content: 'always run brew deps --tree before installing', type: 'preference' },
     });
-    expect(result.kind).toBe('rejection_skip');
-    expect(provider.complete).not.toHaveBeenCalled();
+    expect(result.kind).toBe('classified');
+    if (result.kind !== 'classified') return;
+    expect(result.relation).toBe('related_to');
+    expect(result.confidence).toBe(0.78);
+    expect(provider.complete).toHaveBeenCalledOnce();
+  });
+
+  it('downgrades contradicts → none when the LLM violates the rejection-pair rule (AC10 guard)', async () => {
+    const provider = makeMockProvider(
+      '{"relation":"contradicts","confidence":0.85,"rationale":"prompt-violation: A and B disagree"}',
+      0.014,
+    );
+    const result = await stage2OpusClassify(provider, {
+      from: { id: 'r1', content: 'do not commit secrets', type: 'rejection' },
+      to:   { id: 'c1', content: 'we commit dev tokens for testing', type: 'context' },
+    });
+    expect(result.kind).toBe('classified');
+    if (result.kind !== 'classified') return;
+    expect(result.relation).toBe('none');
+    expect(result.downgraded).toBe(true);
+    expect(result.rationale).toMatch(/AC10.*downgraded/);
   });
 
   it('returns none when Opus says no relation', async () => {

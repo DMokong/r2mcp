@@ -183,14 +183,12 @@ async function processPair(
   counters.stage2Total++;
   const s2 = await deps.stage2Classify({ from: fromMem, to: toMem });
 
-  if (s2.kind === 'rejection_skip') {
-    await deps.state.append({ run_id: opts.runId, pair_hash: ph, stage: 'rejection_skip', timestamp: new Date().toISOString() });
-    process.stdout.write(`SKIP rejection-pair {memory_id: ${fromMem.id}, type: ${fromMem.type}}, {memory_id: ${toMem.id}, type: ${toMem.type}} — ${s2.reason}\n`);
-    return;
-  }
-
   counters.totalCost += s2.cost_usd;
   counters.stage2Classified++;
+
+  if (s2.downgraded) {
+    process.stdout.write(`AC10 GUARD: downgraded contradicts→none for rejection pair {${fromMem.id} (${fromMem.type})}, {${toMem.id} (${toMem.type})}\n`);
+  }
 
   if (s2.relation !== 'none' && s2.confidence > 0) {
     const edgeId = await deps.insertEdge(
