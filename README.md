@@ -159,6 +159,69 @@ Then use `/remember <note>` in Claude Code to persist memories with full judgmen
 | `compile` | Regenerate browsable wiki views under `memory/compiled/` (SPEC-044, see below) |
 | `lint` | Surface structural feedback: contradictions, stale, orphans, drift, superseded_unflagged (SPEC-044, see below) |
 
+## Recall v2 — semantic + budget-aware retrieval
+
+`recall()` is the workhorse retrieval tool. v2 (xMemory-inspired, 2026-04) layers four retrieval shapes on top of the underlying hybrid semantic + full-text search:
+
+### 1. Relevance floor — `min_score`
+
+Filter out low-quality matches before they're returned. Without this, semantic search dumps a long tail of weakly-related results.
+
+```ts
+recall({ query: "edge classifier cost cap", min_score: 0.3 })
+```
+
+Suggested defaults: `0.3` for semantic queries, `0.1` for keyword-driven ones.
+
+### 2. MMR diversity — `diversity` (lambda 0.0–1.0)
+
+Maximal Marginal Relevance reranks results to balance relevance against redundancy. `1.0` is pure relevance (may return three near-duplicates of the top hit); `0.0` is pure diversity (spreads coverage); the default `0.7` favors relevance with mild diversification.
+
+```ts
+recall({ query: "memory architecture", diversity: 0.5, top_k: 8 })
+```
+
+Use lower values when you want broad coverage of a topic, higher when you want the single best answer plus close runners-up.
+
+### 3. Context budget — `max_tokens`
+
+Token-budget retrieval: walks MMR-reranked results in score order and stops when adding the next result would exceed the budget. Returns `tokens_used` in the response so you know how much you actually pulled.
+
+```ts
+recall({ query: "what we learned about classifiers", max_tokens: 4000 })
+// → up to N results, summing to ≤4000 tokens, prioritized by relevance × diversity
+```
+
+This is the right call when you're stuffing recall results into a downstream prompt and have a hard context limit. `top_k` is ignored when `max_tokens` is set — the budget decides the cut.
+
+### 4. Progressive tier search — `progressive` + `confidence_threshold`
+
+Top-down retrieval through the tier hierarchy (`preferences` → `project-context` → `conversations`). High-confidence matches in `preferences` short-circuit the search before lower tiers are consulted, mimicking the xMemory observation that decisions/preferences usually answer questions before context/history needs to.
+
+```ts
+recall({ query: "do we use bun or npm", progressive: true, confidence_threshold: 0.82 })
+// → returns immediately if a preferences-tier match scores ≥0.82, else widens to project-context, then conversations
+```
+
+Default behavior — turn off with `progressive: false` to force a full sweep across tiers, or pin a single tier with `tier: 'preferences'`.
+
+### Composing them
+
+The four parameters compose:
+
+```ts
+recall({
+  query: "spec-bench cleanup conventions",
+  min_score: 0.3,           // drop weak matches
+  diversity: 0.6,           // some diversification
+  max_tokens: 3000,         // fit in context
+  progressive: true,        // early-stop on prefs hits
+  confidence_threshold: 0.82,
+})
+```
+
+Plus `signals[]` on the response surfaces typed memory edges (`contradicts`, `superseded_by`) on the returned memories so callers can flag conflicts inline.
+
 ## Cross-Project Memory
 
 All projects pointing at the same `R2MCP_DATABASE_URL` share a single memory pool. This is intentional — your knowledge travels with you. Namespace isolation is a v2 roadmap item.
