@@ -87,11 +87,7 @@ describe.skipIf(!shouldRun())('cross-provider classification agreement (D.AC6)',
           from: entry.from,
           to: entry.to,
         });
-        if (out.kind === 'rejection_skip') {
-          results.push({ relation: 'none', confidence: 0 });
-        } else {
-          results.push({ relation: out.relation, confidence: out.confidence });
-        }
+        results.push({ relation: out.relation, confidence: out.confidence });
       }
       perProvider.set(name, results);
     }

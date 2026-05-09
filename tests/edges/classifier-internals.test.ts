@@ -134,14 +134,19 @@ describe('runClassifier — counter invariants', () => {
   });
 });
 
-describe('runClassifier — rejection-skip records terminal stage', () => {
-  it('marks rejection-skip pairs as terminal in state', async () => {
+describe('runClassifier — AC10 contradicts-downgrade records terminal stage', () => {
+  it('marks AC10-downgraded pairs as terminal (no edge written, opus_complete stage)', async () => {
     const pairs: CandidatePair[] = [
       { from_id: 'a', to_id: 'b', shared_topics: ['t'], shared_people: [] },
     ];
     const deps = makeDeps({
       findCandidatePairs: vi.fn().mockResolvedValue(pairs),
-      stage2Classify: vi.fn().mockResolvedValue({ kind: 'rejection_skip', reason: 'r' }),
+      // Simulate stage2OpusClassify's AC10 guard output
+      stage2Classify: vi.fn().mockResolvedValue({
+        kind: 'classified', relation: 'none', confidence: 0.85,
+        rationale: '[AC10] downgraded contradicts→none for rejection pair',
+        cost_usd: 0, downgraded: true,
+      }),
     });
     const summary = await runClassifier({ runId: 'r-rej', maxCostUsd: 1, dryRun: false }, deps);
     expect(summary.edges_written).toBe(0);

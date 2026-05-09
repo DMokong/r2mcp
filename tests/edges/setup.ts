@@ -1,8 +1,8 @@
 import { getPool, initDb, closeDb } from '../../src/db.js';
+import { pickTestUrl } from '../test-db-guard.js';
 
 export async function setupEdgesTestDb() {
-  process.env.R2MCP_DATABASE_URL =
-    process.env.R2MCP_DATABASE_URL || 'postgresql://localhost:5432/r2mcp_test';
+  process.env.R2MCP_DATABASE_URL = pickTestUrl();
   await initDb();
   const pool = getPool();
   await pool.query('DELETE FROM memory_edges');
