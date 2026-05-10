@@ -14,6 +14,8 @@ import { stats } from './tools/stats.js';
 import { reject } from './tools/reject.js';
 import { meditate } from './tools/meditate.js';
 import { compile } from './tools/compile.js';
+import { classify } from './tools/classify.js';
+import { dumpEdgesSidecarTool } from './tools/dump-edges-sidecar.js';
 import { lint } from './tools/lint.js';
 import { withToolSpan } from './telemetry.js';
 
@@ -248,6 +250,60 @@ server.tool(
       return r;
     });
 
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.tool(
+  'classify',
+  'Classify candidate memory pairs into typed edges (supports, contradicts, supersedes, evolved_into, depends_on, related_to). Wraps the SPEC-043 edge classifier with cost cap and provider auto-fallback. Subprocess-spawned per the MCP-server-makes-no-LLM-calls invariant.',
+  {
+    since_days: z.number().optional().describe('Filter candidate pairs to memories updated in the last N days'),
+    max_cost_usd: z.number().optional().describe('Per-run cost cap in USD; default $1.00 from R2MCP_EDGE_MAX_USD'),
+    dry_run: z.boolean().optional().describe('Estimate-only — no edges written'),
+    resume_run_id: z.string().optional().describe('Resume a prior run_id; terminal pairs not re-classified'),
+    provider: z.enum(['claude-code', 'anthropic', 'openrouter']).optional().describe('Force a specific provider for this run'),
+  },
+  async (args) => {
+    const result = await withToolSpan('classify', {
+      since_days: args.since_days ?? 0,
+      provider: args.provider ?? 'auto',
+    }, async (span) => {
+      const r = await classify({
+        since_days: args.since_days,
+        max_cost_usd: args.max_cost_usd,
+        dry_run: args.dry_run,
+        resume_run_id: args.resume_run_id,
+        provider: args.provider,
+      }, { cwd: PROJECT_ROOT });
+      span.setAttribute('edges_written', r.edges_written);
+      span.setAttribute('total_cost_usd', r.total_cost_usd);
+      span.setAttribute('hit_cost_cap', r.hit_cost_cap);
+      return r;
+    });
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.tool(
+  'dump_edges_sidecar',
+  'Write memory_edges and memories as JSON sidecar files for downstream consumers (Memory Explorer, /memory-doctor, etc.). In-process pgvector dump — no subprocess, no LLM calls.',
+  {
+    out_dir: z.string().describe('Absolute path to the directory where edges.json + memories.json land. Required.'),
+  },
+  async (args) => {
+    const result = await withToolSpan('dump_edges_sidecar', {
+      out_dir: args.out_dir,
+    }, async (span) => {
+      const r = await dumpEdgesSidecarTool({ out_dir: args.out_dir });
+      span.setAttribute('memories_count', r.memories_count);
+      span.setAttribute('edges_count', r.edges_count);
+      return r;
+    });
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };

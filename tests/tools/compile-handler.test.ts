@@ -53,7 +53,8 @@ describe('compile() MCP tool — subprocess delegation', () => {
     const result = await compile({ tier: 'preferences' }, { spawnFn });
     expect(result.run_id).toBe('run-1');
     expect(result.provider).toBe('claude-code');
-    expect(capturedArgs?.[0]).toBe('tsx');
+    expect(['tsx', 'node']).toContain(capturedArgs?.[0]);
+    expect(capturedArgs?.[1]).toMatch(/\/scripts\/compile-wiki\.(ts|js)$/);
     expect(capturedArgs).toContain('--tier=preferences');
   });
 

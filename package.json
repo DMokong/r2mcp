@@ -4,8 +4,17 @@
   "description": "Persistent semantic memory layer for Claude Code — PostgreSQL + pgvector + OpenRouter embeddings",
   "type": "module",
   "main": "dist/index.js",
+  "files": [
+    "dist/",
+    "skills/",
+    "scripts/setup.ts",
+    "scripts/migrate.ts",
+    "src/schema.sql",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "tsc && cp src/schema.sql dist/",
+    "build": "tsc && tsc -p tsconfig.scripts.json && cp src/schema.sql dist/",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",

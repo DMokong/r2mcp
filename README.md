@@ -138,6 +138,34 @@ cp -r skills/remember .claude/plugins/
 
 Then use `/remember <note>` in Claude Code to persist memories with full judgment pipeline.
 
+## Configuration
+
+r2mcp reads its configuration entirely from the MCP transport's environment.
+For consumers, that means **`.mcp.json env` is the sole config surface**:
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "node",
+      "args": ["./node_modules/r2mcp/dist/index.js"],
+      "env": {
+        "R2MCP_DATABASE_URL": "postgres://...",
+        "R2MCP_OPENROUTER_API_KEY": "sk-or-...",
+        "ANTHROPIC_API_KEY": "sk-ant-...",
+        "R2MCP_CLASSIFIER_PROVIDER": "claude-code",
+        "R2MCP_EDGE_MAX_USD": "1.00",
+        "R2MCP_COMPILE_MAX_USD": "1.00"
+      }
+    }
+  }
+}
+```
+
+A `.env` file at the r2mcp source root (`r2mcp/.env`) is **dev-only** —
+used by `npm run` scripts in this repo when working from a checkout.
+Production consumers do not need it.
+
 ## Memory Tiers
 
 | Tier | What goes here | Auto-archived after |
@@ -157,6 +185,8 @@ Then use `/remember <note>` in Claude Code to persist memories with full judgmen
 | `reject` | Mark a memory as rejected (excluded from future recall) |
 | `stats` | Health check — counts, staleness, embedding status |
 | `compile` | Regenerate browsable wiki views under `memory/compiled/` (SPEC-044, see below) |
+| `classify` | Classify candidate memory pairs into typed edges (supports, contradicts, supersedes, evolved_into, depends_on, related_to). Subprocess-spawned (SPEC-044 invariant). |
+| `dump_edges_sidecar` | In-process JSON dump of memory_edges + memories to a caller-supplied directory. Used by downstream consumers like Memory Explorer. |
 | `lint` | Surface structural feedback: contradictions, stale, orphans, drift, superseded_unflagged (SPEC-044, see below) |
 
 ## Recall v2 — semantic + budget-aware retrieval

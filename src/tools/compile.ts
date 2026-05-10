@@ -10,6 +10,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
 import type { CompileSummary } from '../compiler/types.js';
+import { resolveCliCommand } from './spawn-cli.js';
 
 export interface CompileToolInput {
   tier?: 'preferences' | 'project-context' | 'conversations';
@@ -37,12 +38,13 @@ export async function compile(
 ): Promise<CompileSummary> {
   validateInput(input);
 
-  const args = buildArgs(input);
+  const { bin, args: cliArgs } = resolveCliCommand('compile-wiki');
+  const flags = buildArgs(input);
   const cwd = deps.cwd ?? process.cwd();
   const spawnFn = deps.spawnFn ?? spawn;
   const timeoutMs = deps.runTimeoutMs ?? 30 * 60_000;
 
-  const stdout = await runSubprocess(spawnFn, cwd, args, timeoutMs);
+  const stdout = await runSubprocess(spawnFn, cwd, [bin, ...cliArgs, ...flags], timeoutMs);
   return parseSummary(stdout);
 }
 
@@ -54,14 +56,14 @@ function validateInput(input: CompileToolInput): void {
 }
 
 function buildArgs(input: CompileToolInput): string[] {
-  const args = ['tsx', 'scripts/compile-wiki.ts'];
-  if (input.tier) args.push(`--tier=${input.tier}`);
-  if (input.all) args.push('--all');
-  if (input.topic) args.push(`--topic=${input.topic}`);
-  if (input.dry_run) args.push('--dry-run');
-  if (typeof input.max_cost_usd === 'number') args.push(`--max-cost=${input.max_cost_usd}`);
-  if (input.provider) args.push(`--provider=${input.provider}`);
-  return args;
+  const flags: string[] = [];
+  if (input.tier) flags.push(`--tier=${input.tier}`);
+  if (input.all) flags.push('--all');
+  if (input.topic) flags.push(`--topic=${input.topic}`);
+  if (input.dry_run) flags.push('--dry-run');
+  if (typeof input.max_cost_usd === 'number') flags.push(`--max-cost=${input.max_cost_usd}`);
+  if (input.provider) flags.push(`--provider=${input.provider}`);
+  return flags;
 }
 
 function runSubprocess(
