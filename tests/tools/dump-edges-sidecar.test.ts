@@ -7,7 +7,24 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pg from 'pg';
-import { dumpEdgesJsonWithClient } from '../../src/tools/dump-edges-sidecar.js';
+import { dumpEdgesJsonWithClient, dumpEdgesSidecarTool } from '../../src/tools/dump-edges-sidecar.js';
+
+/**
+ * AC2 anti-hardcoded-default: the MCP tool wrapper rejects calls that
+ * omit out_dir. Without this guard, a future change could silently
+ * default to a hardcoded path and regress SPEC-038's extraction work.
+ * No DB is required to exercise this path — the validator runs first.
+ */
+describe('dump_edges_sidecar input validation', () => {
+  it('throws when out_dir is missing (no hardcoded default)', async () => {
+    // @ts-expect-error — deliberately omitting required field
+    await expect(dumpEdgesSidecarTool({})).rejects.toThrow(/out_dir/i);
+  });
+
+  it('throws when out_dir is empty string', async () => {
+    await expect(dumpEdgesSidecarTool({ out_dir: '' })).rejects.toThrow(/out_dir/i);
+  });
+});
 
 // Defense-in-depth (claw-0vsn): only run against an explicit test DB or a
 // local *test* database. Never against production, even if R2MCP_DATABASE_URL
