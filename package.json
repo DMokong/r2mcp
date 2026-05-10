@@ -14,7 +14,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.scripts.json && cp src/schema.sql dist/",
+    "build": "tsc && tsc -p tsconfig.scripts.json && cp src/schema.sql dist/ && cp src/schema.sql dist/src/",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -47,7 +47,11 @@ export class ClaudeCodeProvider implements LLMProvider {
   private readonly runTimeoutMs: number;
 
   constructor(opts: ClaudeCodeOptions = {}) {
-    this.binary = opts.binary ?? 'claude';
+    // Resolution precedence: explicit opts.binary → R2MCP_CLAUDE_BIN env →
+    // bare 'claude'. The env var lets packaged consumers point at an
+    // absolute install path (e.g., ~/.local/bin/claude) when the spawning
+    // process inherits a sanitized PATH (launchd jobs, systemd services).
+    this.binary = opts.binary ?? process.env.R2MCP_CLAUDE_BIN ?? 'claude';
     this.spawnFn = opts.spawnFn ?? spawn;
     this.runTimeoutMs = opts.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
   }
@@ -87,7 +91,7 @@ export async function probeClaudeCode(opts: {
   spawnFn?: typeof spawn;
   timeoutMs?: number;
 } = {}): Promise<boolean> {
-  const binary = opts.binary ?? 'claude';
+  const binary = opts.binary ?? process.env.R2MCP_CLAUDE_BIN ?? 'claude';
   const spawnFn = opts.spawnFn ?? spawn;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
   try {
