@@ -101,3 +101,14 @@ export async function dumpEdgesJson(outDir: string): Promise<DumpEdgesOutput> {
     await client.end();
   }
 }
+
+/**
+ * MCP tool wrapper. The server calls this with the validated input.
+ * Returns the structured output as a JSON-serialized text content block.
+ */
+export async function dumpEdgesSidecarTool(input: DumpEdgesInput): Promise<DumpEdgesOutput> {
+  if (!input.out_dir) {
+    throw new Error('dump_edges_sidecar requires out_dir');
+  }
+  return dumpEdgesJson(input.out_dir);
+}
