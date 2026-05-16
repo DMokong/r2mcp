@@ -91,6 +91,7 @@ server.tool(
     diversity: z.number().min(0).max(1).optional().describe('MMR lambda: 1.0 = pure relevance, 0.0 = pure diversity (default: 0.7)'),
     progressive: z.boolean().optional().describe('Search tiers top-down, stopping early when high-confidence results found (default: true)'),
     confidence_threshold: z.number().optional().describe('Raw score threshold for progressive early-stop (default: 0.82)'),
+    entity: z.string().optional().describe('SPEC-046: filter results to memories linked to this entity (canonical_name or alias; case-insensitive). When set, response adds entity_resolved/entity_id and per-result entity_links.'),
   },
   async (args) => {
     const result = await withToolSpan('recall', {
@@ -98,6 +99,7 @@ server.tool(
       tier: args.tier || 'all',
       top_k: args.top_k,
       progressive: args.progressive ?? true,
+      entity: args.entity ?? '',
     }, async (span) => {
       const r = await recall({
         query: args.query,
@@ -108,6 +110,7 @@ server.tool(
         diversity: args.diversity,
         progressive: args.progressive,
         confidence_threshold: args.confidence_threshold,
+        entity: args.entity,
       });
       span.setAttribute('result_count', r.total_results ?? 0);
       span.setAttribute('search_mode', r.search_mode ?? 'unknown');

@@ -3,6 +3,8 @@ import { embedText } from '../embeddings.js';
 import pgvector from 'pgvector';
 import { getSignalsForMemoryIds } from '../edges/signals.js';
 import type { RecallSignal } from '../edges/types.js';
+import { findEntityByInput, getEntityLinksForMemories } from '../entities/db.js';
+import type { EntityRow, EntityType } from '../entities/types.js';
 
 const { toSql } = pgvector;
 
@@ -25,6 +27,12 @@ const DEFAULT_MIN_SCORE_FULLTEXT = 0.0;
 const DEFAULT_DIVERSITY = 0.7;
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.82;
 
+export interface EntityLink {
+  type: EntityType;
+  canonical_name: string;
+  confidence: number;
+}
+
 export interface RecallResult {
   id: string;
   tier: string;
@@ -38,6 +46,8 @@ export interface RecallResult {
   };
   score: number;
   match_type: MatchType;
+  /** SPEC-046: present only when recall() is called with an `entity` filter. */
+  entity_links?: EntityLink[];
 }
 
 export interface RecallResponse {
@@ -50,6 +60,10 @@ export interface RecallResponse {
   early_stopped?: boolean;
   /** Always present in v1.1+; optional for backward-compat with pre-edges client types. */
   signals?: RecallSignal[];
+  /** SPEC-046: present only when recall() is called with an `entity` filter. */
+  entity_resolved?: boolean;
+  /** SPEC-046: present only when `entity_resolved` is true. */
+  entity_id?: string;
 }
 
 export interface RecallInput {
@@ -61,6 +75,8 @@ export interface RecallInput {
   diversity?: number;
   progressive?: boolean;
   confidence_threshold?: number;
+  /** SPEC-046: optional entity filter. Resolves via canonical_name or alias. */
+  entity?: string;
 }
 
 // Internal type with pre-tier-weight score and raw embedding for MMR computation
@@ -167,13 +183,22 @@ async function hybridSearchTier(
   topK: number,
   tier?: Tier,
   fetchEmbeddings = false,
+  entityId?: string,
 ): Promise<InternalResult[]> {
   const embeddingSql = toSql(queryEmbedding);
   const params: unknown[] = [embeddingSql, query];
   let tierFilter = '';
   if (tier) {
-    tierFilter = ' AND tier = $3';
+    tierFilter = ` AND tier = $${params.length + 1}`;
     params.push(tier);
+  }
+  // SPEC-046: narrow the candidate pool to memories linked to the resolved
+  // entity. Cheapest expression is a subquery in the WHERE clause — applied
+  // inside the CTE so ranking only ever runs over the entity-scoped pool.
+  let entityFilter = '';
+  if (entityId) {
+    entityFilter = ` AND id IN (SELECT memory_id FROM memory_entities WHERE entity_id = $${params.length + 1})`;
+    params.push(entityId);
   }
 
   const embeddingCol = fetchEmbeddings ? 'embedding::text AS raw_embedding,' : '';
@@ -195,7 +220,7 @@ async function hybridSearchTier(
       AND (
         embedding IS NOT NULL
         OR tsv @@ plainto_tsquery('english', $2)
-      )${tierFilter}
+      )${tierFilter}${entityFilter}
     )
     SELECT *,
       CASE match_type
@@ -236,12 +261,18 @@ async function fulltextSearchTier(
   query: string,
   topK: number,
   tier?: Tier,
+  entityId?: string,
 ): Promise<InternalResult[]> {
   const params: unknown[] = [query];
   let tierFilter = '';
   if (tier) {
-    tierFilter = ' AND tier = $2';
+    tierFilter = ` AND tier = $${params.length + 1}`;
     params.push(tier);
+  }
+  let entityFilter = '';
+  if (entityId) {
+    entityFilter = ` AND id IN (SELECT memory_id FROM memory_entities WHERE entity_id = $${params.length + 1})`;
+    params.push(entityId);
   }
 
   const sql = `
@@ -250,7 +281,7 @@ async function fulltextSearchTier(
       ts_rank(tsv, plainto_tsquery('english', $1)) AS fulltext_score
     FROM memories
     WHERE type NOT IN ('rejection', 'archived')
-    AND tsv @@ plainto_tsquery('english', $1)${tierFilter}
+    AND tsv @@ plainto_tsquery('english', $1)${tierFilter}${entityFilter}
     ORDER BY fulltext_score DESC
     LIMIT ${topK}
   `;
@@ -285,6 +316,7 @@ async function progressiveHybridSearch(
   queryEmbedding: number[],
   topK: number,
   confidenceThreshold: number,
+  entityId?: string,
 ): Promise<{ results: InternalResult[]; tiersSearched: string[]; earlyStopped: boolean }> {
   const tiersSearched: string[] = [];
   const allResults: InternalResult[] = [];
@@ -292,7 +324,7 @@ async function progressiveHybridSearch(
 
   for (const tier of TIER_ORDER) {
     tiersSearched.push(tier);
-    const tierResults = await hybridSearchTier(pool, query, queryEmbedding, topK, tier, true);
+    const tierResults = await hybridSearchTier(pool, query, queryEmbedding, topK, tier, true, entityId);
 
     // Merge without duplicates
     for (const r of tierResults) {
@@ -314,6 +346,50 @@ async function progressiveHybridSearch(
   return { results: allResults, tiersSearched, earlyStopped };
 }
 
+// --- Entity-only fast path ---
+
+// When an entity filter is set but the caller provides no query (or an empty
+// one), we skip semantic/fulltext ranking entirely — there's nothing to rank
+// against. Return all memories linked to the entity, ordered by recency, so
+// the entity_links attachment downstream still has a stable result set.
+async function entityOnlySearch(
+  pool: ReturnType<typeof getPool>,
+  entityId: string,
+  topK: number,
+  tier?: Tier,
+): Promise<InternalResult[]> {
+  const params: unknown[] = [entityId];
+  let tierFilter = '';
+  if (tier) {
+    tierFilter = ` AND m.tier = $${params.length + 1}`;
+    params.push(tier);
+  }
+  const sql = `
+    SELECT m.id, m.content, m.tier, m.type, m.topics, m.people, m.created_at, m.updated_at
+    FROM memories m
+    WHERE m.type NOT IN ('rejection', 'archived')
+    AND m.id IN (SELECT memory_id FROM memory_entities WHERE entity_id = $1)${tierFilter}
+    ORDER BY m.updated_at DESC
+    LIMIT ${topK}
+  `;
+  const { rows } = await pool.query(sql, params);
+  return rows.map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    tier: row.tier as string,
+    content: row.content as string,
+    metadata: {
+      type: row.type as string,
+      topics: (row.topics as string[]) || [],
+      persons: (row.people as string[]) || [],
+      created: (row.created_at as Date).toISOString(),
+      updated: (row.updated_at as Date).toISOString(),
+    },
+    score: 1.0,
+    match_type: 'fulltext' as MatchType,
+    rawScore: 1.0,
+  }));
+}
+
 // --- Main recall function ---
 
 export async function recall(input: RecallInput): Promise<RecallResponse> {
@@ -326,10 +402,35 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
     diversity = DEFAULT_DIVERSITY,
     progressive = true,
     confidence_threshold = DEFAULT_CONFIDENCE_THRESHOLD,
+    entity,
   } = input;
 
   const pool = getPool();
-  const queryEmbedding = await embedText(query);
+
+  // SPEC-046: resolve entity BEFORE retrieval. The resolution is the cheapest
+  // possible signal — a single indexed lookup on entities.normalized_name.
+  // When it fails, short-circuit with an empty result + entity_resolved=false
+  // (no error, per AC3b).
+  const entityFilterActive = entity !== undefined && entity !== '';
+  let resolvedEntity: EntityRow | null = null;
+  if (entityFilterActive) {
+    resolvedEntity = await findEntityByInput(pool, entity!);
+    if (!resolvedEntity) {
+      return {
+        results: [],
+        query: query ?? '',
+        total_results: 0,
+        search_mode: 'semantic',
+        tiers_searched: [],
+        entity_resolved: false,
+      };
+    }
+  }
+
+  // Skip embedText entirely on the entity-only fast path: an empty query
+  // would either burn an embedding round-trip for nothing or break ranking.
+  const skipRanking = entityFilterActive && (!query || query === '');
+  const queryEmbedding = skipRanking ? null : await embedText(query);
 
   let hasDbEmbeddings = false;
   if (queryEmbedding) {
@@ -350,19 +451,26 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
   let tiersSearched: string[];
   let earlyStopped = false;
 
-  if (useHybrid && progressive && !tier) {
+  const entityId = resolvedEntity?.id;
+
+  if (skipRanking && entityId) {
+    // SPEC-046: entity-only fast path. No query → no ranking signal; just
+    // return entity-linked memories ordered by recency.
+    rawResults = await entityOnlySearch(pool, entityId, candidateLimit, tier);
+    tiersSearched = tier ? [tier] : (TIER_ORDER as string[]);
+  } else if (useHybrid && progressive && !tier) {
     // Phase 3: progressive tier search — most valuable in semantic mode
-    const r = await progressiveHybridSearch(pool, query, queryEmbedding!, candidateLimit, confidence_threshold);
+    const r = await progressiveHybridSearch(pool, query, queryEmbedding!, candidateLimit, confidence_threshold, entityId);
     rawResults = r.results;
     tiersSearched = r.tiersSearched;
     earlyStopped = r.earlyStopped;
   } else if (useHybrid) {
     // Flat hybrid search: tier explicitly set or progressive disabled
-    rawResults = await hybridSearchTier(pool, query, queryEmbedding!, candidateLimit, tier, true);
+    rawResults = await hybridSearchTier(pool, query, queryEmbedding!, candidateLimit, tier, true, entityId);
     tiersSearched = tier ? [tier] : (TIER_ORDER as string[]);
   } else {
     // Fulltext-only fallback: no embeddings available
-    rawResults = await fulltextSearchTier(pool, query, candidateLimit, tier);
+    rawResults = await fulltextSearchTier(pool, query, candidateLimit, tier, entityId);
     tiersSearched = tier ? [tier] : (TIER_ORDER as string[]);
   }
 
@@ -395,8 +503,33 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
   const ids = finalResults.map(r => r.id);
   const signals = await getSignalsForMemoryIds(pool, ids);
 
+  // SPEC-046: when the entity filter is active, attach per-memory entity_links
+  // (the FULL link set for each memory, not just the filter entity — callers
+  // can see the wider entity graph for these results) and set top-level
+  // entity_resolved + entity_id. When the filter is OFF, response shape must
+  // be byte-identical to SPEC-037 — no new keys, not even undefined ones.
+  const strippedResults = finalResults.map(stripInternal);
+  if (entityFilterActive && resolvedEntity) {
+    const linkMap = await getEntityLinksForMemories(pool, ids);
+    for (const r of strippedResults) {
+      r.entity_links = linkMap.get(r.id) ?? [];
+    }
+    return {
+      results: strippedResults,
+      query,
+      total_results: finalResults.length,
+      search_mode: searchMode,
+      tiers_searched: tiersSearched,
+      tokens_used: tokensUsed,
+      early_stopped: earlyStopped,
+      signals,
+      entity_resolved: true,
+      entity_id: resolvedEntity.id,
+    };
+  }
+
   return {
-    results: finalResults.map(stripInternal),
+    results: strippedResults,
     query,
     total_results: finalResults.length,
     search_mode: searchMode,
