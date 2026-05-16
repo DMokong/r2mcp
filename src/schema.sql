@@ -77,3 +77,36 @@ CREATE INDEX IF NOT EXISTS idx_edges_to
 CREATE INDEX IF NOT EXISTS idx_edges_currently_valid
   ON memory_edges (relation, from_memory_id)
   WHERE valid_until IS NULL;
+
+-- ============================================================================
+-- SPEC-046: entities + memory_entities — light entity extraction (Phase 4 wiki-mode)
+-- Four-type taxonomy; one join table. Lighter than OB1's full ontology.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS entities (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type            TEXT NOT NULL CHECK (type IN ('project', 'person', 'tool', 'decision')),
+  canonical_name  TEXT NOT NULL,
+  normalized_name TEXT NOT NULL,
+  aliases         TEXT[] NOT NULL DEFAULT '{}',
+  metadata        JSONB NOT NULL DEFAULT '{}',
+  first_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT entities_unique UNIQUE (type, normalized_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_entities_normalized ON entities (normalized_name);
+CREATE INDEX IF NOT EXISTS idx_entities_aliases    ON entities USING gin (aliases);
+CREATE INDEX IF NOT EXISTS idx_entities_type       ON entities (type);
+
+CREATE TABLE IF NOT EXISTS memory_entities (
+  memory_id   UUID   NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  entity_id   UUID   NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  confidence  REAL   NOT NULL DEFAULT 1.0 CHECK (confidence BETWEEN 0 AND 1),
+  source      TEXT   NOT NULL DEFAULT 'classifier',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (memory_id, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_entities_entity ON memory_entities (entity_id);
+CREATE INDEX IF NOT EXISTS idx_memory_entities_memory ON memory_entities (memory_id);
