@@ -83,7 +83,7 @@ server.tool(
   'recall',
   'Search memory using semantic similarity and full-text search. Supports progressive tier search, MMR diversity, relevance floor, and token-budget-based retrieval.',
   {
-    query: z.string(),
+    query: z.string().optional().default('').describe('Free-text query. Optional when `entity` is provided — SPEC-046 entity-only recall short-circuits without a query.'),
     top_k: z.number().optional().default(10),
     tier: z.enum(['preferences', 'project-context', 'conversations']).optional(),
     max_tokens: z.number().optional().describe('Token budget — return results until budget is exhausted'),
@@ -94,15 +94,16 @@ server.tool(
     entity: z.string().optional().describe('SPEC-046: filter results to memories linked to this entity (canonical_name or alias; case-insensitive). When set, response adds entity_resolved/entity_id and per-result entity_links.'),
   },
   async (args) => {
+    const queryStr = args.query ?? '';
     const result = await withToolSpan('recall', {
-      query_length: args.query.length,
+      query_length: queryStr.length,
       tier: args.tier || 'all',
       top_k: args.top_k,
       progressive: args.progressive ?? true,
       entity: args.entity ?? '',
     }, async (span) => {
       const r = await recall({
-        query: args.query,
+        query: queryStr,
         top_k: args.top_k,
         tier: args.tier,
         max_tokens: args.max_tokens,

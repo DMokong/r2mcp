@@ -67,7 +67,8 @@ export interface RecallResponse {
 }
 
 export interface RecallInput {
-  query: string;
+  /** Free-text query. Optional only when `entity` is provided (SPEC-046 entity-only fast path). */
+  query?: string;
   top_k?: number;
   tier?: Tier;
   max_tokens?: number;
@@ -394,7 +395,9 @@ async function entityOnlySearch(
 
 export async function recall(input: RecallInput): Promise<RecallResponse> {
   const {
-    query,
+    // SPEC-046: query is optional when `entity` is set (entity-only recall).
+    // Normalize undefined → '' so downstream code keeps the same string contract.
+    query = '',
     top_k = 10,
     tier,
     max_tokens,

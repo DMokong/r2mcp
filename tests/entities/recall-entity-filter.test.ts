@@ -91,6 +91,17 @@ describe('SPEC-046 recall(entity) — Task 10', () => {
     expect(res.total_results).toBe(0);
   });
 
+  it('AC3: entity-only recall works without query (no query field at all)', async () => {
+    // MCP schema now allows recall({entity}) with omitted query (Task 10 follow-up).
+    // Exercises the same internal code path as the MCP tool wrapper.
+    const { ids, specId } = await seed3MemoriesWithSpeculator();
+    const res = await recall({ entity: 'Speculator' });
+    expect(res.entity_resolved).toBe(true);
+    expect(res.entity_id).toBe(specId);
+    expect(res.results.map((r) => r.id).sort()).toEqual([ids[0], ids[2]].sort());
+    expect(res.query).toBe('');
+  });
+
   it('AC4: recall() with no entity param has response shape identical to SPEC-037 (no entity fields)', async () => {
     await seed3MemoriesWithSpeculator();
     const res = await recall({ query: 'memory' });
