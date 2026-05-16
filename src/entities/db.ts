@@ -1,0 +1,183 @@
+// SPEC-046 Task 4 — entities DB layer.
+//
+// Pure DB access for the entity extraction pipeline. All functions accept
+// either a pg.Pool or pg.PoolClient (both expose a compatible .query()).
+// Callers in the extractor driver and recall path use the shared pool from
+// src/db.ts; tests pass the pool directly.
+
+import type pg from 'pg';
+import { normalizeEntityName } from './normalize.js';
+import type { EntityRow, EntityType } from './types.js';
+
+type DbClient = pg.Pool | pg.PoolClient;
+
+export interface UpsertEntityInput {
+  type: EntityType;
+  canonical_name: string;
+  aliases?: string[];
+}
+export interface UpsertEntityResult {
+  id: string;
+  created: boolean;
+}
+
+export async function upsertEntity(
+  client: DbClient,
+  input: UpsertEntityInput,
+): Promise<UpsertEntityResult> {
+  const normalized = normalizeEntityName(input.canonical_name);
+  const aliases = (input.aliases ?? [])
+    .map((a) => normalizeEntityName(a))
+    .filter((a) => a.length > 0);
+
+  const { rows } = await client.query(
+    `INSERT INTO entities (type, canonical_name, normalized_name, aliases)
+     VALUES ($1, $2, $3, $4::text[])
+     ON CONFLICT (type, normalized_name) DO UPDATE SET last_seen_at = NOW()
+     RETURNING id, (xmax = 0) AS created`,
+    [input.type, input.canonical_name, normalized, aliases],
+  );
+  return { id: rows[0].id, created: rows[0].created };
+}
+
+export async function findEntityByInput(
+  client: DbClient,
+  input: string,
+): Promise<EntityRow | null> {
+  const normalized = normalizeEntityName(input);
+  if (!normalized) return null;
+
+  const { rows } = await client.query<EntityRow>(
+    `SELECT id, type, canonical_name, normalized_name, aliases, metadata, first_seen_at, last_seen_at
+     FROM entities
+     WHERE normalized_name = $1 OR $1 = ANY(aliases)
+     LIMIT 1`,
+    [normalized],
+  );
+  return rows[0] ?? null;
+}
+
+export async function mergeAliases(
+  client: DbClient,
+  entityId: string,
+  newAliases: string[],
+): Promise<string[]> {
+  const normalized = newAliases
+    .map((a) => normalizeEntityName(a))
+    .filter((a) => a.length > 0);
+  const { rows } = await client.query(
+    `UPDATE entities
+     SET aliases = ARRAY(SELECT DISTINCT UNNEST(aliases || $2::text[])),
+         last_seen_at = NOW()
+     WHERE id = $1
+     RETURNING aliases`,
+    [entityId, normalized],
+  );
+  return rows[0]?.aliases ?? [];
+}
+
+export interface LinkResult {
+  inserted: boolean;
+}
+export async function linkMemoryToEntity(
+  client: DbClient,
+  memoryId: string,
+  entityId: string,
+  confidence: number,
+  source: string,
+): Promise<LinkResult> {
+  const { rowCount } = await client.query(
+    `INSERT INTO memory_entities (memory_id, entity_id, confidence, source)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (memory_id, entity_id) DO NOTHING`,
+    [memoryId, entityId, confidence, source],
+  );
+  return { inserted: (rowCount ?? 0) > 0 };
+}
+
+export async function getTopEntitiesByFrequency(
+  client: DbClient,
+  n: number,
+): Promise<
+  Array<{
+    type: EntityType;
+    canonical_name: string;
+    aliases: string[];
+    link_count: number;
+  }>
+> {
+  const { rows } = await client.query(
+    `SELECT e.type, e.canonical_name, e.aliases, COUNT(me.memory_id)::int AS link_count
+     FROM entities e
+     LEFT JOIN memory_entities me ON me.entity_id = e.id
+     GROUP BY e.id
+     ORDER BY link_count DESC, e.canonical_name ASC
+     LIMIT $1`,
+    [n],
+  );
+  return rows;
+}
+
+export interface CandidateFilter {
+  sinceDays?: number;
+}
+export async function findCandidateMemories(
+  client: DbClient,
+  filter: CandidateFilter,
+): Promise<Array<{ id: string; content: string; updated_at: Date }>> {
+  const params: unknown[] = [];
+  const clauses: string[] = [];
+  // No existing entity rows OR memory updated since most recent link
+  clauses.push(`(
+    NOT EXISTS (SELECT 1 FROM memory_entities me WHERE me.memory_id = m.id)
+    OR m.updated_at > (SELECT MAX(me.created_at) FROM memory_entities me WHERE me.memory_id = m.id)
+  )`);
+  if (filter.sinceDays !== undefined) {
+    if (filter.sinceDays === 0) return [];
+    params.push(filter.sinceDays);
+    clauses.push(
+      `m.updated_at >= NOW() - ($${params.length}::int * INTERVAL '1 day')`,
+    );
+  }
+  const { rows } = await client.query(
+    `SELECT m.id, m.content, m.updated_at
+     FROM memories m
+     WHERE ${clauses.join(' AND ')}
+     ORDER BY m.updated_at DESC`,
+    params,
+  );
+  return rows;
+}
+
+export async function getEntityLinksForMemories(
+  client: DbClient,
+  memoryIds: string[],
+): Promise<
+  Map<
+    string,
+    Array<{ type: EntityType; canonical_name: string; confidence: number }>
+  >
+> {
+  if (memoryIds.length === 0) return new Map();
+  const { rows } = await client.query(
+    `SELECT me.memory_id, e.type, e.canonical_name, me.confidence
+     FROM memory_entities me
+     JOIN entities e ON e.id = me.entity_id
+     WHERE me.memory_id = ANY($1::uuid[])`,
+    [memoryIds],
+  );
+  const out = new Map<
+    string,
+    Array<{ type: EntityType; canonical_name: string; confidence: number }>
+  >();
+  for (const r of rows) {
+    const arr = out.get(r.memory_id) ?? [];
+    arr.push({
+      type: r.type,
+      canonical_name: r.canonical_name,
+      confidence: r.confidence,
+    });
+    out.set(r.memory_id, arr);
+  }
+  return out;
+}
