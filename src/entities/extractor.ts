@@ -46,9 +46,10 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
   let parse_failures = 0;
   let hit_cost_cap = false;
 
-  const candidates = opts.full
-    ? await findCandidateMemories(opts.client, {}) // TODO Phase 5: --full overrides pre-filter
-    : await findCandidateMemories(opts.client, { sinceDays: opts.sinceDays });
+  const candidates = await findCandidateMemories(opts.client, {
+    sinceDays: opts.sinceDays,
+    full: opts.full,
+  });
   const known = await getTopEntitiesByFrequency(opts.client, opts.contextTopN);
 
   for (const mem of candidates) {

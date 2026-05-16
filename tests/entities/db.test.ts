@@ -143,6 +143,31 @@ describe('SPEC-046 entities DB layer', () => {
     expect(after.map((c) => c.id)).toContain(m1.id);
   });
 
+  it('findCandidateMemories with {full: true} bypasses the pre-filter and returns all memories (R6)', async () => {
+    // Seed 3 memories; link 2 of them so they would be excluded by the default pre-filter.
+    const e = await upsertEntity(pool, { type: 'project', canonical_name: 'A' });
+    const mIds: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const {
+        rows: [m],
+      } = await pool.query(
+        `INSERT INTO memories (content, tier, type, fingerprint) VALUES ($1, 'preferences', 'preference', $2) RETURNING id`,
+        [`m-full-${i}`, `fp-full-${i}`],
+      );
+      mIds.push(m.id);
+    }
+    await linkMemoryToEntity(pool, mIds[0], e.id, 1.0, 'classifier');
+    await linkMemoryToEntity(pool, mIds[1], e.id, 1.0, 'classifier');
+
+    const defaultPool = await findCandidateMemories(pool, {});
+    const defaultIds = defaultPool.map((c) => c.id).sort();
+    expect(defaultIds).toEqual([mIds[2]].sort());
+
+    const fullPool = await findCandidateMemories(pool, { full: true });
+    const fullIds = fullPool.map((c) => c.id).sort();
+    expect(fullIds).toEqual([...mIds].sort());
+  });
+
   it('findCandidateMemories with sinceDays narrows window further', async () => {
     const {
       rows: [m],

@@ -120,6 +120,14 @@ export async function getTopEntitiesByFrequency(
 
 export interface CandidateFilter {
   sinceDays?: number;
+  /**
+   * When true, bypass the "no existing entity rows OR updated since most-recent link"
+   * pre-filter and return ALL memories in the corpus. Spec R6: full-corpus
+   * re-extraction is opt-in via this flag, not the default. The `sinceDays`
+   * filter still applies if both are set (though the CLI/MCP guards against
+   * passing them together).
+   */
+  full?: boolean;
 }
 export async function findCandidateMemories(
   client: DbClient,
@@ -127,11 +135,13 @@ export async function findCandidateMemories(
 ): Promise<Array<{ id: string; content: string; updated_at: Date }>> {
   const params: unknown[] = [];
   const clauses: string[] = [];
-  // No existing entity rows OR memory updated since most recent link
-  clauses.push(`(
-    NOT EXISTS (SELECT 1 FROM memory_entities me WHERE me.memory_id = m.id)
-    OR m.updated_at > (SELECT MAX(me.created_at) FROM memory_entities me WHERE me.memory_id = m.id)
-  )`);
+  if (!filter.full) {
+    // Default pre-filter: no existing entity rows OR memory updated since most recent link
+    clauses.push(`(
+      NOT EXISTS (SELECT 1 FROM memory_entities me WHERE me.memory_id = m.id)
+      OR m.updated_at > (SELECT MAX(me.created_at) FROM memory_entities me WHERE me.memory_id = m.id)
+    )`);
+  }
   if (filter.sinceDays !== undefined) {
     if (filter.sinceDays === 0) return [];
     params.push(filter.sinceDays);
@@ -139,10 +149,11 @@ export async function findCandidateMemories(
       `m.updated_at >= NOW() - ($${params.length}::int * INTERVAL '1 day')`,
     );
   }
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
   const { rows } = await client.query(
     `SELECT m.id, m.content, m.updated_at
      FROM memories m
-     WHERE ${clauses.join(' AND ')}
+     ${where}
      ORDER BY m.updated_at DESC`,
     params,
   );

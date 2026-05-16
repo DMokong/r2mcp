@@ -130,6 +130,74 @@ describe('SPEC-046 runExtractor', () => {
     expect(summary.memories_extracted).toBe(0);
   });
 
+  it('provider throw: returns run summary with error, does not mark failing memory terminal, preserves prior progress', async () => {
+    await seedCorpus();
+    // Provider succeeds once then rejects on every subsequent call.
+    let calls = 0;
+    const flakyProvider: LLMProvider = {
+      name: 'anthropic',
+      concurrencyLimit: 10,
+      complete: async (_req): Promise<CompleteResponse> => {
+        calls++;
+        if (calls === 1) {
+          return {
+            response: JSON.stringify({
+              matched: [],
+              new_entities: [
+                { type: 'project', canonical_name: 'First', aliases: [], confidence: 0.9 },
+              ],
+            }),
+            cost_usd: 0.005,
+            latency_ms: 10,
+          };
+        }
+        throw new Error('upstream 503');
+      },
+    };
+
+    const summary = await runExtractor({
+      client: pool,
+      provider: flakyProvider,
+      dataDir,
+      maxCostUsd: 1.0,
+      contextTopN: 100,
+    });
+
+    // 1. Run summary surfaces a non-empty error including "provider error"
+    expect(summary.error).toBeTruthy();
+    expect(summary.error).toMatch(/provider error/);
+
+    // 2. The memory that triggered the throw is NOT marked terminal — a resume
+    //    run can retry it. The first successful memory IS terminal.
+    expect(summary.memories_extracted).toBe(1);
+
+    // Second run (resume) — provider behaves normally now. The memory that
+    // previously errored must be re-attempted (proving it wasn't marked terminal).
+    const responses = corpus.memories.map(() =>
+      JSON.stringify({
+        matched: [],
+        new_entities: [{ type: 'project', canonical_name: 'Retried', aliases: [], confidence: 0.9 }],
+      }),
+    );
+    const resumed = await runExtractor({
+      client: pool,
+      provider: mockProvider(responses),
+      dataDir,
+      maxCostUsd: 1.0,
+      contextTopN: 100,
+      resumeFrom: summary.run_id,
+    });
+    // After resume we processed the remaining 9 memories (10 corpus - 1 already extracted).
+    expect(resumed.memories_extracted).toBe(corpus.memories.length - 1);
+
+    // 3. Memories processed BEFORE the throw are still recorded — "First" entity persists.
+    const { rows } = await pool.query(
+      'SELECT COUNT(*)::int AS n FROM entities WHERE canonical_name = $1',
+      ['First'],
+    );
+    expect(rows[0].n).toBe(1);
+  });
+
   it('AC6: idempotent re-extraction with same response does not duplicate rows', async () => {
     await seedCorpus();
     const responses = corpus.memories.map(() =>
