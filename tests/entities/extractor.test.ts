@@ -198,6 +198,99 @@ describe('SPEC-046 runExtractor', () => {
     expect(rows[0].n).toBe(1);
   });
 
+  it('AC9: invalid type from LLM produces zero DB rows for that type (parser drops it, valid sibling still inserts)', async () => {
+    // Single memory; LLM returns one bad-type entry + one valid one. The parser
+    // is expected to silently drop the bad type (with a warning) and keep the
+    // valid one. After the full extractor pipeline runs, the entities table
+    // must contain ONLY the valid row — no rows of type='event'. The schema's
+    // CHECK constraint would also reject a type='event' write, but this test
+    // proves we never even attempt the bad insert.
+    const { rows: [m] } = await pool.query(
+      `INSERT INTO memories (content, tier, type, fingerprint) VALUES ('about Event and Good', 'preferences', 'preference', 'fp-ac9-1') RETURNING id`,
+    );
+    const response = JSON.stringify({
+      matched: [],
+      new_entities: [
+        { type: 'event', canonical_name: 'BadType', aliases: [], confidence: 0.9 },
+        { type: 'project', canonical_name: 'Good', aliases: [], confidence: 0.9 },
+      ],
+    });
+    const summary = await runExtractor({
+      client: pool,
+      provider: mockProvider([response]),
+      dataDir,
+      maxCostUsd: 1.0,
+      contextTopN: 100,
+    });
+
+    // Pipeline completed for the memory (not parse-failed) — bad type is a
+    // soft drop, not a hard failure.
+    expect(summary.memories_extracted).toBe(1);
+    expect(summary.parse_failures).toBe(0);
+
+    // Zero rows of type='event' — the gate-2b recommendation's explicit ask.
+    const { rows: eventRows } = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM entities WHERE type = 'event'",
+    );
+    expect(eventRows[0].n).toBe(0);
+
+    // The BadType canonical_name must not appear in any entity row.
+    const { rows: badName } = await pool.query(
+      'SELECT COUNT(*)::int AS n FROM entities WHERE canonical_name = $1',
+      ['BadType'],
+    );
+    expect(badName[0].n).toBe(0);
+
+    // Valid sibling persisted — proves we kept going after the bad entry.
+    const { rows: goodRows } = await pool.query(
+      "SELECT type, canonical_name FROM entities WHERE canonical_name = 'Good'",
+    );
+    expect(goodRows).toHaveLength(1);
+    expect(goodRows[0].type).toBe('project');
+
+    // Memory IS linked to the valid entity exactly once — no orphan/duplicate.
+    const { rows: links } = await pool.query(
+      'SELECT COUNT(*)::int AS n FROM memory_entities WHERE memory_id = $1',
+      [m.id],
+    );
+    expect(links[0].n).toBe(1);
+  });
+
+  it('R4 sentinel: extractor processes memories sequentially — peak provider in-flight is 1, never exceeds claude-code cap=2', async () => {
+    // The extractor driver does not parallelize across memories. This test
+    // pins that invariant: if someone parallelizes the loop without adding a
+    // Semaphore, peak in-flight would jump past 1 and this assertion fires.
+    // Bounded by the strictest provider cap (claude-code = 2) by design.
+    await seedCorpus();
+    let inFlight = 0;
+    let peak = 0;
+    const observingProvider: LLMProvider = {
+      name: 'claude-code',
+      concurrencyLimit: 2,
+      complete: async (_req): Promise<CompleteResponse> => {
+        inFlight++;
+        if (inFlight > peak) peak = inFlight;
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+        return {
+          response: JSON.stringify({ matched: [], new_entities: [] }),
+          cost_usd: 0,
+          latency_ms: 5,
+        };
+      },
+    };
+    const summary = await runExtractor({
+      client: pool,
+      provider: observingProvider,
+      dataDir,
+      maxCostUsd: 1.0,
+      contextTopN: 100,
+    });
+    expect(summary.memories_seen).toBe(10);
+    expect(peak).toBe(1); // sequential by design
+    expect(peak).toBeLessThanOrEqual(observingProvider.concurrencyLimit);
+  });
+
   it('AC6: idempotent re-extraction with same response does not duplicate rows', async () => {
     await seedCorpus();
     const responses = corpus.memories.map(() =>

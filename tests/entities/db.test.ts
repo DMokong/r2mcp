@@ -168,6 +168,28 @@ describe('SPEC-046 entities DB layer', () => {
     expect(fullIds).toEqual([...mIds].sort());
   });
 
+  it('findCandidateMemories with sinceDays=0 returns empty (dry-run edge case, R6)', async () => {
+    // Seed two memories that would otherwise be candidates (no links + recent).
+    await pool.query(
+      `INSERT INTO memories (content, tier, type, fingerprint) VALUES ('m-a', 'preferences', 'preference', 'fp-zero-a')`,
+    );
+    await pool.query(
+      `INSERT INTO memories (content, tier, type, fingerprint) VALUES ('m-b', 'preferences', 'preference', 'fp-zero-b')`,
+    );
+    // Sanity: default filter sees both.
+    const baseline = await findCandidateMemories(pool, {});
+    expect(baseline.length).toBeGreaterThanOrEqual(2);
+
+    // sinceDays=0 is the documented dry-run sentinel — empty candidate pool.
+    const zero = await findCandidateMemories(pool, { sinceDays: 0 });
+    expect(zero).toEqual([]);
+
+    // Also exercises the {full:true, sinceDays:0} combination (CLI guards this
+    // but the DB layer should still honor the empty-pool sentinel if reached).
+    const zeroFull = await findCandidateMemories(pool, { sinceDays: 0, full: true });
+    expect(zeroFull).toEqual([]);
+  });
+
   it('findCandidateMemories with sinceDays narrows window further', async () => {
     const {
       rows: [m],

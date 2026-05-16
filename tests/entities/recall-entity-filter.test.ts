@@ -102,6 +102,59 @@ describe('SPEC-046 recall(entity) — Task 10', () => {
     expect(res.query).toBe('');
   });
 
+  it('AC3: entity filter composes with a fulltext query — intersection narrows pool, then ranking applies', async () => {
+    // Spec R3/AC3: "When called with recall({entity: 'Speculator', query: '...'}),
+    // the result set is the intersection." Three memories share the keyword
+    // 'pgvector'; only two are linked to Speculator. recall({entity, query})
+    // must return ONLY the entity-linked subset, not all three keyword hits.
+    const { rows: m1Row } = await pool.query(
+      `INSERT INTO memories (content, tier, type, fingerprint)
+       VALUES ('Speculator uses pgvector for memory search', 'preferences', 'preference', 'fp-int-1') RETURNING id`,
+    );
+    const { rows: m2Row } = await pool.query(
+      `INSERT INTO memories (content, tier, type, fingerprint)
+       VALUES ('Speculator architecture and pgvector indexing notes', 'preferences', 'preference', 'fp-int-2') RETURNING id`,
+    );
+    const { rows: m3Row } = await pool.query(
+      `INSERT INTO memories (content, tier, type, fingerprint)
+       VALUES ('OB1 also uses pgvector but is not the Speculator project', 'preferences', 'preference', 'fp-int-3') RETURNING id`,
+    );
+    const m1 = m1Row[0].id, m2 = m2Row[0].id, m3 = m3Row[0].id;
+
+    const spec = await upsertEntity(pool, {
+      type: 'project',
+      canonical_name: 'Speculator',
+      aliases: [],
+    });
+    // Link only m1 and m2 to Speculator; m3 stays unlinked even though its
+    // content matches the query.
+    await linkMemoryToEntity(pool, m1, spec.id, 0.95, 'classifier');
+    await linkMemoryToEntity(pool, m2, spec.id, 0.95, 'classifier');
+
+    // Fulltext-only path: no embeddings on these test rows, so recall falls
+    // through to fulltextSearchTier which honors the entityFilter clause.
+    const res = await recall({ query: 'pgvector', entity: 'Speculator' });
+
+    // Intersection narrowing: results contain m1+m2 only — m3 is excluded
+    // despite being a strong query match.
+    expect(res.entity_resolved).toBe(true);
+    expect(res.entity_id).toBe(spec.id);
+    const resultIds = res.results.map((r) => r.id);
+    expect(resultIds).toContain(m1);
+    expect(resultIds).toContain(m2);
+    expect(resultIds).not.toContain(m3);
+    expect(res.total_results).toBe(2);
+
+    // entity_links surface still attached to every result.
+    for (const r of res.results) {
+      expect(r.entity_links).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ canonical_name: 'Speculator' }),
+        ]),
+      );
+    }
+  });
+
   it('AC4: recall() with no entity param has response shape identical to SPEC-037 (no entity fields)', async () => {
     await seed3MemoriesWithSpeculator();
     const res = await recall({ query: 'memory' });

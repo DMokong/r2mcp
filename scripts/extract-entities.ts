@@ -33,7 +33,7 @@ import {
   type ProviderName,
 } from '../src/providers/index.js';
 
-interface CliArgs {
+export interface CliArgs {
   sinceDays?: number;
   maxCostUsd: number;
   providerFlag?: ProviderName;
@@ -43,7 +43,20 @@ interface CliArgs {
   contextTopN: number;
 }
 
-function parseArgs(argv: string[]): CliArgs {
+// SPEC-046 R6: argv-parse errors must produce a non-zero exit with a clear
+// message naming the offending flag(s). UsageError carries the exit code so
+// main() can preserve the historical exit-2 contract while parseArgs stays
+// pure & unit-testable.
+export class UsageError extends Error {
+  readonly exitCode: number;
+  constructor(message: string, exitCode = 2) {
+    super(message);
+    this.name = 'UsageError';
+    this.exitCode = exitCode;
+  }
+}
+
+export function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     maxCostUsd: Number(process.env.R2MCP_ENTITY_MAX_USD ?? '1.00'),
     dataDir: process.env.R2MCP_ENTITY_DATA_DIR ?? 'data',
@@ -60,7 +73,7 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a.startsWith('--provider=')) {
       const raw = a.split('=')[1];
       if (!isProviderName(raw)) {
-        throw new Error(
+        throw new UsageError(
           `--provider must be one of claude-code|anthropic|openrouter, got ${raw}`,
         );
       }
@@ -74,8 +87,9 @@ function parseArgs(argv: string[]): CliArgs {
     }
   }
   if (args.full && args.sinceDays !== undefined) {
-    process.stderr.write('Error: --full and --since-days are mutually exclusive\n');
-    process.exit(2);
+    throw new UsageError(
+      'Error: --full and --since-days are mutually exclusive',
+    );
   }
   return args;
 }
@@ -105,11 +119,28 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  if (err instanceof ProviderUnavailableError) {
-    process.stderr.write(`${err.message}\n`);
-  } else {
-    process.stderr.write(`ERROR: ${err instanceof Error ? err.message : String(err)}\n`);
+// Only run main() when invoked as the script entry point. Importing parseArgs
+// (e.g. from tests) must not boot the extractor.
+const isDirectInvocation = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return import.meta.url === new URL(`file://${process.argv[1]}`).href;
+  } catch {
+    return false;
   }
-  process.exit(1);
-});
+})();
+
+if (isDirectInvocation) {
+  main().catch((err) => {
+    if (err instanceof UsageError) {
+      process.stderr.write(`${err.message}\n`);
+      process.exit(err.exitCode);
+    }
+    if (err instanceof ProviderUnavailableError) {
+      process.stderr.write(`${err.message}\n`);
+    } else {
+      process.stderr.write(`ERROR: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+    process.exit(1);
+  });
+}

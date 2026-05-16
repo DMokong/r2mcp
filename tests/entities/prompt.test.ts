@@ -77,4 +77,48 @@ describe('SPEC-046 R7 buildExtractionPrompt', () => {
     expect(prompt).toContain('matched');
     expect(prompt).toContain('new_entities');
   });
+
+  it('encodes the exact response JSON schema (keys + field names + four-type set)', async () => {
+    // gate-2b advisory: the prior test only asserts keyword presence. A drift
+    // that altered the response-shape instructions (renamed keys, added/removed
+    // fields, allowed extra types) would not be caught. This test pins the
+    // structural contract the parser depends on.
+    const { buildExtractionPrompt } = await import('../../src/entities/prompt.js');
+    const prompt = buildExtractionPrompt({
+      memory_content: 'irrelevant',
+      known_entities: [],
+    });
+
+    // Required JSON keys appear as quoted strings (i.e. inside the schema block,
+    // not as casual prose). A typo like "matched_entities" would slip past a
+    // bare /matched/ assertion but fail this one.
+    expect(prompt).toContain('"matched"');
+    expect(prompt).toContain('"new_entities"');
+
+    // Per-entry field names must be enumerated explicitly.
+    expect(prompt).toContain('canonical_name');
+    expect(prompt).toContain('confidence');
+    expect(prompt).toContain('aliases');
+
+    // The four-type taxonomy must be spelled out fully (single regex so all
+    // four must appear in the same prompt — guards against dropping one).
+    expect(prompt).toMatch(
+      /project[\s\S]*person[\s\S]*tool[\s\S]*decision|project,\s*person,\s*tool,\s*decision/,
+    );
+    expect(prompt).toContain('project');
+    expect(prompt).toContain('person');
+    expect(prompt).toContain('tool');
+    expect(prompt).toContain('decision');
+
+    // The confidence-range hint that the parser's clamp01 assumes.
+    expect(prompt).toMatch(/0\.0-1\.0|\[0,\s*1\]|0 to 1/);
+
+    // The "no prose, no markdown" guardrail — drift here breaks the parser
+    // (which expects raw JSON, not fenced output).
+    expect(prompt).toMatch(/no\s+prose|no\s+code\s+fences|JSON\s+only/i);
+
+    // The "matched canonical_name must EXACTLY match a known" rule that keeps
+    // the LLM from hallucinating new canonicals into `matched`.
+    expect(prompt).toMatch(/EXACTLY|exact|exactly/);
+  });
 });
