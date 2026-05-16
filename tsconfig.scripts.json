@@ -10,6 +10,7 @@
     "scripts/classify-edges.ts",
     "scripts/compile-wiki.ts",
     "scripts/dump-edges-json.ts",
+    "scripts/extract-entities.ts",
     "scripts/setup.ts",
     "scripts/setup-helpers.ts",
     "scripts/migrate.ts",
