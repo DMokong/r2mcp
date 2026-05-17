@@ -13,7 +13,11 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
-export type CliScriptName = 'classify-edges' | 'compile-wiki' | 'dump-edges-json' | 'extract-entities';
+export type CliScriptName =
+  | 'classify-edges'
+  | 'compile-wiki'
+  | 'dump-edges-json'
+  | 'extract-entities';
 
 export interface ResolvedCli {
   bin: string;
@@ -31,7 +35,10 @@ export function resolveCliCommand(scriptName: CliScriptName): ResolvedCli {
 /**
  * Pure function — testable in isolation by passing a fake import.meta.url.
  */
-export function resolveCliCommandForUrl(scriptName: CliScriptName, importMetaUrl: string): ResolvedCli {
+export function resolveCliCommandForUrl(
+  scriptName: CliScriptName,
+  importMetaUrl: string,
+): ResolvedCli {
   const thisFile = fileURLToPath(importMetaUrl);
   const isDev = thisFile.endsWith('.ts');
   const dir = dirname(thisFile);

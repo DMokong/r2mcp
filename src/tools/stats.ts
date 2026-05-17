@@ -119,9 +119,7 @@ export async function stats(): Promise<StatsResult> {
       rejection: typeMap['rejection'] || 0,
     },
     staleness: {
-      oldest_entry: stalenessRow.oldest_entry
-        ? stalenessRow.oldest_entry.toISOString()
-        : null,
+      oldest_entry: stalenessRow.oldest_entry ? stalenessRow.oldest_entry.toISOString() : null,
       avg_age_days: Math.round(parseFloat(stalenessRow.avg_age_days) * 100) / 100,
     },
     top_topics: topicsResult.rows.map((row) => ({
@@ -132,9 +130,7 @@ export async function stats(): Promise<StatsResult> {
       entries_with_embeddings: embeddingRow.with_embeddings,
       entries_without_embeddings: embeddingRow.without_embeddings,
       model: 'openai/text-embedding-3-small',
-      last_write: lastWriteRow.last_write
-        ? lastWriteRow.last_write.toISOString()
-        : null,
+      last_write: lastWriteRow.last_write ? lastWriteRow.last_write.toISOString() : null,
     },
   };
 }

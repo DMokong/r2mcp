@@ -62,7 +62,8 @@ export class ClaudeCodeProvider implements LLMProvider {
       '-p',
       this.composePrompt(req),
       '--output-format=json',
-      '--model', MODEL_IDS[req.model],
+      '--model',
+      MODEL_IDS[req.model],
     ];
     const stdout = await runClaude(this.spawnFn, this.binary, args, this.runTimeoutMs);
     const parsed = parseClaudeJson(stdout);
@@ -86,11 +87,13 @@ export class ClaudeCodeProvider implements LLMProvider {
  * Probe whether Claude Code is logged in. Fast (~5s timeout). Used by
  * `selectProvider()` for auto-fallback (D.AC1).
  */
-export async function probeClaudeCode(opts: {
-  binary?: string;
-  spawnFn?: typeof spawn;
-  timeoutMs?: number;
-} = {}): Promise<boolean> {
+export async function probeClaudeCode(
+  opts: {
+    binary?: string;
+    spawnFn?: typeof spawn;
+    timeoutMs?: number;
+  } = {},
+): Promise<boolean> {
   const binary = opts.binary ?? process.env.R2MCP_CLAUDE_BIN ?? 'claude';
   const spawnFn = opts.spawnFn ?? spawn;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
@@ -122,10 +125,18 @@ function runClaude(
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      try { child.kill('SIGKILL'); } catch { /* ignore */ }
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        /* ignore */
+      }
     }, timeoutMs);
-    child.stdout?.on('data', (d: Buffer | string) => { stdout += d.toString(); });
-    child.stderr?.on('data', (d: Buffer | string) => { stderr += d.toString(); });
+    child.stdout?.on('data', (d: Buffer | string) => {
+      stdout += d.toString();
+    });
+    child.stderr?.on('data', (d: Buffer | string) => {
+      stderr += d.toString();
+    });
     child.on('error', (err) => {
       clearTimeout(timer);
       reject(err);
@@ -134,7 +145,9 @@ function runClaude(
       clearTimeout(timer);
       if (timedOut) return reject(new Error(`claude timed out after ${timeoutMs}ms`));
       if (code !== 0) {
-        return reject(new Error(`claude exited ${code} (signal=${signal}): ${stderr.slice(0, 500)}`));
+        return reject(
+          new Error(`claude exited ${code} (signal=${signal}): ${stderr.slice(0, 500)}`),
+        );
       }
       resolve(stdout);
     });

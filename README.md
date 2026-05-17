@@ -8,7 +8,7 @@ Persistent, semantic, tiered memory layer for Claude Code sessions.
 
 ## What you get
 
-- **8 MCP tools:** `remember`, `recall`, `search`, `meditate`, `reject`, `stats`, `compile`, `lint`
+- **11 MCP tools:** `remember`, `recall`, `search`, `meditate`, `reject`, `stats`, `compile`, `lint`, `classify`, `dump_edges_sidecar`, `extract_entities`
 - **3-tier memory:** `preferences` (decisions, style) → `project-context` (architecture, state) → `conversations` (relationship, history)
 - **Semantic search:** Progressive tier search with MMR diversity reranking and relevance floor filtering (Recall v2)
 - **Typed memory edges:** `contradicts`, `supersedes`, `supports`, `evolved_into`, `depends_on`, `related_to` — surfaced as signals on `recall()`

@@ -1,8 +1,9 @@
 import type { LLMProvider } from '../providers/types.js';
+import { withLLMCallSpan } from '../telemetry.js';
 
 export interface PairForFilter {
   from: { id: string; content: string };
-  to:   { id: string; content: string };
+  to: { id: string; content: string };
 }
 
 export interface Stage1Result {
@@ -38,12 +39,19 @@ export async function stage1HaikuFilter(
   pair: PairForFilter,
 ): Promise<Stage1Result> {
   const userPrompt = `Memory A (id=${pair.from.id}): ${pair.from.content}\n\nMemory B (id=${pair.to.id}): ${pair.to.content}`;
-  const result = await provider.complete({
-    model: 'haiku',
-    system: STAGE1_SYSTEM,
-    prompt: userPrompt,
-    max_tokens: STAGE1_MAX_OUTPUT_TOKENS,
-  });
+  // claw-1ejd: wrap the LLM call so the parent OTEL_TRACEPARENT context
+  // has a concrete child span to inherit when this runs as a subprocess.
+  const result = await withLLMCallSpan(
+    'memory.classify_edges.call',
+    { provider: provider.name, model: 'haiku' },
+    () =>
+      provider.complete({
+        model: 'haiku',
+        system: STAGE1_SYSTEM,
+        prompt: userPrompt,
+        max_tokens: STAGE1_MAX_OUTPUT_TOKENS,
+      }),
+  );
   const parsed = parseStage1Response(result.response);
   return { pass: parsed.pass, comment: parsed.comment, cost_usd: result.cost_usd };
 }

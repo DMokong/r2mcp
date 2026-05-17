@@ -9,8 +9,14 @@ import { Semaphore } from '../providers/semaphore.js';
 export interface ClassifierDeps {
   findCandidatePairs: (opts: { sinceDays?: number }) => Promise<CandidatePair[]>;
   fetchMemoryById: (id: string) => Promise<MemoryForClassify | null>;
-  stage1Filter: (pair: { from: { id: string; content: string }; to: { id: string; content: string } }) => Promise<Stage1Result>;
-  stage2Classify: (pair: { from: MemoryForClassify; to: MemoryForClassify }) => Promise<Stage2Result>;
+  stage1Filter: (pair: {
+    from: { id: string; content: string };
+    to: { id: string; content: string };
+  }) => Promise<Stage1Result>;
+  stage2Classify: (pair: {
+    from: MemoryForClassify;
+    to: MemoryForClassify;
+  }) => Promise<Stage2Result>;
   insertEdge: (
     fromId: string,
     toId: string,
@@ -64,9 +70,14 @@ export async function runClassifier(opts: RunOptions, deps: ClassifierDeps): Pro
   const terminals = await deps.state.terminalPairs(opts.runId);
 
   const counters: Counters = {
-    stage1Total: 0, stage1Pass: 0, stage1Skip: 0,
-    stage2Total: 0, stage2Classified: 0,
-    edgesWritten: 0, totalCost: 0, hitCap: false,
+    stage1Total: 0,
+    stage1Pass: 0,
+    stage1Skip: 0,
+    stage2Total: 0,
+    stage2Classified: 0,
+    edgesWritten: 0,
+    totalCost: 0,
+    hitCap: false,
   };
 
   if (opts.dryRun) {
@@ -76,14 +87,19 @@ export async function runClassifier(opts: RunOptions, deps: ClassifierDeps): Pro
     } else {
       estimate = candidates.length * 0.018;
     }
-    process.stdout.write(`Estimated cost for full run: $${estimate.toFixed(2)} (${candidates.length} candidate pairs after pre-filter)\n`);
+    process.stdout.write(
+      `Estimated cost for full run: $${estimate.toFixed(2)} (${candidates.length} candidate pairs after pre-filter)\n`,
+    );
     return {
       run_id: opts.runId,
       started_at: startedAt,
       ended_at: new Date().toISOString(),
       candidate_pairs: candidates.length,
-      stage1_total: 0, stage1_pass: 0, stage1_skip: 0,
-      stage2_total: 0, stage2_classified: 0,
+      stage1_total: 0,
+      stage1_pass: 0,
+      stage1_skip: 0,
+      stage2_total: 0,
+      stage2_classified: 0,
       edges_written: 0,
       total_cost_usd: 0,
       hit_cost_cap: false,
@@ -116,7 +132,9 @@ export async function runClassifier(opts: RunOptions, deps: ClassifierDeps): Pro
   await Promise.all([...inFlight]);
 
   if (counters.hitCap) {
-    process.stdout.write(`Cost cap reached at $${counters.totalCost.toFixed(4)}. Resume with: npm run edges:classify -- --resume=${opts.runId}\n`);
+    process.stdout.write(
+      `Cost cap reached at $${counters.totalCost.toFixed(4)}. Resume with: npm run edges:classify -- --resume=${opts.runId}\n`,
+    );
   }
 
   const summary: RunSummary = {
@@ -156,7 +174,12 @@ async function processPair(
   // Pre-call cap check for Stage 1. Approximate under concurrency.
   if (counters.totalCost + STAGE1_EST_COST_USD > opts.maxCostUsd) {
     counters.hitCap = true;
-    await deps.state.append({ run_id: opts.runId, pair_hash: ph, stage: 'cap_reached', timestamp: new Date().toISOString() });
+    await deps.state.append({
+      run_id: opts.runId,
+      pair_hash: ph,
+      stage: 'cap_reached',
+      timestamp: new Date().toISOString(),
+    });
     return;
   }
 
@@ -166,17 +189,34 @@ async function processPair(
 
   if (!s1.pass) {
     counters.stage1Skip++;
-    await deps.state.append({ run_id: opts.runId, pair_hash: ph, stage: 'haiku_skip', timestamp: new Date().toISOString(), cost_usd: s1.cost_usd });
+    await deps.state.append({
+      run_id: opts.runId,
+      pair_hash: ph,
+      stage: 'haiku_skip',
+      timestamp: new Date().toISOString(),
+      cost_usd: s1.cost_usd,
+    });
     return;
   }
 
   counters.stage1Pass++;
-  await deps.state.append({ run_id: opts.runId, pair_hash: ph, stage: 'haiku_pass', timestamp: new Date().toISOString(), cost_usd: s1.cost_usd });
+  await deps.state.append({
+    run_id: opts.runId,
+    pair_hash: ph,
+    stage: 'haiku_pass',
+    timestamp: new Date().toISOString(),
+    cost_usd: s1.cost_usd,
+  });
 
   // Pre-call cap check for Stage 2.
   if (counters.totalCost + STAGE2_EST_COST_USD > opts.maxCostUsd) {
     counters.hitCap = true;
-    await deps.state.append({ run_id: opts.runId, pair_hash: ph, stage: 'cap_reached', timestamp: new Date().toISOString() });
+    await deps.state.append({
+      run_id: opts.runId,
+      pair_hash: ph,
+      stage: 'cap_reached',
+      timestamp: new Date().toISOString(),
+    });
     return;
   }
 
@@ -187,22 +227,36 @@ async function processPair(
   counters.stage2Classified++;
 
   if (s2.downgraded) {
-    process.stdout.write(`AC10 GUARD: downgraded contradicts→none for rejection pair {${fromMem.id} (${fromMem.type})}, {${toMem.id} (${toMem.type})}\n`);
+    process.stdout.write(
+      `AC10 GUARD: downgraded contradicts→none for rejection pair {${fromMem.id} (${fromMem.type})}, {${toMem.id} (${toMem.type})}\n`,
+    );
   }
 
   if (s2.relation !== 'none' && s2.confidence > 0) {
     const edgeId = await deps.insertEdge(
-      fromMem.id, toMem.id, s2.relation, s2.confidence, s2.rationale, deps.classifierVersion,
+      fromMem.id,
+      toMem.id,
+      s2.relation,
+      s2.confidence,
+      s2.rationale,
+      deps.classifierVersion,
     );
     counters.edgesWritten++;
     await deps.state.append({
-      run_id: opts.runId, pair_hash: ph, stage: 'opus_complete',
-      timestamp: new Date().toISOString(), cost_usd: s2.cost_usd, edge_id: edgeId,
+      run_id: opts.runId,
+      pair_hash: ph,
+      stage: 'opus_complete',
+      timestamp: new Date().toISOString(),
+      cost_usd: s2.cost_usd,
+      edge_id: edgeId,
     });
   } else {
     await deps.state.append({
-      run_id: opts.runId, pair_hash: ph, stage: 'opus_complete',
-      timestamp: new Date().toISOString(), cost_usd: s2.cost_usd,
+      run_id: opts.runId,
+      pair_hash: ph,
+      stage: 'opus_complete',
+      timestamp: new Date().toISOString(),
+      cost_usd: s2.cost_usd,
     });
   }
 }

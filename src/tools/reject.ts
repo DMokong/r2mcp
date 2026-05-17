@@ -21,7 +21,7 @@ export async function reject(input: RejectInput): Promise<RejectResult> {
     `UPDATE memories SET type = 'rejection', updated_at = NOW()
      WHERE id = $1
      RETURNING id, tier, topics, people`,
-    [id]
+    [id],
   );
 
   if (updateResult.rows.length === 0) {
@@ -36,14 +36,7 @@ export async function reject(input: RejectInput): Promise<RejectResult> {
     `INSERT INTO memories (content, tier, type, section, topics, people, fingerprint)
      VALUES ($1, $2, 'rejection', $3, $4, $5, $6)
      RETURNING id`,
-    [
-      reason,
-      original.tier,
-      `rejection-of:${id}`,
-      original.topics || [],
-      original.people || [],
-      fp,
-    ]
+    [reason, original.tier, `rejection-of:${id}`, original.topics || [], original.people || [], fp],
   );
 
   return {

@@ -11,13 +11,16 @@
 import { AnthropicProvider } from './anthropic.js';
 import { ClaudeCodeProvider, probeClaudeCode } from './claude-code.js';
 import { OpenRouterProvider } from './openrouter.js';
-import {
-  NO_PROVIDER_AVAILABLE_MESSAGE,
-  ProviderUnavailableError,
-} from './errors.js';
+import { NO_PROVIDER_AVAILABLE_MESSAGE, ProviderUnavailableError } from './errors.js';
 import type { LLMProvider, ProviderName } from './types.js';
 
-export type { CompleteRequest, CompleteResponse, LLMProvider, LogicalModel, ProviderName } from './types.js';
+export type {
+  CompleteRequest,
+  CompleteResponse,
+  LLMProvider,
+  LogicalModel,
+  ProviderName,
+} from './types.js';
 export { AnthropicProvider } from './anthropic.js';
 export { ClaudeCodeProvider, probeClaudeCode } from './claude-code.js';
 export { OpenRouterProvider } from './openrouter.js';
@@ -46,9 +49,11 @@ export interface SelectProviderOptions {
 export async function selectProvider(opts: SelectProviderOptions = {}): Promise<LLMProvider> {
   const env = opts.env ?? process.env;
   const probe = opts.probeClaudeCode ?? (() => probeClaudeCode());
-  const makeAnthropic = opts.makeAnthropic ?? ((apiKey: string) => new AnthropicProvider({ apiKey }));
+  const makeAnthropic =
+    opts.makeAnthropic ?? ((apiKey: string) => new AnthropicProvider({ apiKey }));
   const makeClaudeCode = opts.makeClaudeCode ?? (() => new ClaudeCodeProvider());
-  const makeOpenRouter = opts.makeOpenRouter ?? ((apiKey: string) => new OpenRouterProvider({ apiKey }));
+  const makeOpenRouter =
+    opts.makeOpenRouter ?? ((apiKey: string) => new OpenRouterProvider({ apiKey }));
 
   // Precedence 1: explicit --provider flag
   const explicit = opts.flag ?? readEnvProviderName(env);

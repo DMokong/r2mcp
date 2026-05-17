@@ -37,9 +37,7 @@ export async function search(input: SearchInput): Promise<SearchResult> {
   const pool = getPool();
   const { filter, query, limit = 20 } = input;
 
-  const conditions: string[] = [
-    "type != 'rejection'",
-  ];
+  const conditions: string[] = ["type != 'rejection'"];
   const params: unknown[] = [];
   let paramIndex = 1;
 

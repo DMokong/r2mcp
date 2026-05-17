@@ -13,9 +13,9 @@ export type MatchType = 'semantic' | 'fulltext' | 'hybrid';
 export type SearchMode = 'semantic' | 'fulltext_only';
 
 const TIER_WEIGHTS: Record<string, number> = {
-  'preferences': 1.3,
+  preferences: 1.3,
   'project-context': 1.0,
-  'conversations': 0.8,
+  conversations: 0.8,
 };
 
 const TIER_ORDER: Tier[] = ['preferences', 'project-context', 'conversations'];
@@ -89,7 +89,9 @@ interface InternalResult extends RecallResult {
 // --- Utility functions ---
 
 export function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0, normA = 0, normB = 0;
+  let dot = 0,
+    normA = 0,
+    normB = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
     normA += a[i] * a[i];
@@ -143,7 +145,11 @@ function applyTierWeight(score: number, tier: string): number {
 
 // MMR: Maximum Marginal Relevance — balances relevance vs. diversity to eliminate redundant results.
 // lambda=1.0 = pure relevance (same as top-K), lambda=0.0 = pure diversity.
-export function applyMMR(candidates: InternalResult[], lambda: number, topK: number): InternalResult[] {
+export function applyMMR(
+  candidates: InternalResult[],
+  lambda: number,
+  topK: number,
+): InternalResult[] {
   if (candidates.length === 0) return [];
   if (candidates.length <= 1) return candidates.slice(0, topK);
 
@@ -236,25 +242,27 @@ async function hybridSearchTier(
 
   const { rows } = await pool.query(sql, params);
 
-  return rows.map((row: Record<string, unknown>) => {
-    const rawScore = row.combined_score as number;
-    return {
-      id: row.id as string,
-      tier: row.tier as string,
-      content: row.content as string,
-      metadata: {
-        type: row.type as string,
-        topics: (row.topics as string[]) || [],
-        persons: (row.people as string[]) || [],
-        created: (row.created_at as Date).toISOString(),
-        updated: (row.updated_at as Date).toISOString(),
-      },
-      score: applyTierWeight(rawScore, row.tier as string),
-      match_type: row.match_type as MatchType,
-      rawScore,
-      rawEmbedding: fetchEmbeddings ? parseEmbedding(row.raw_embedding) : undefined,
-    };
-  }).sort((a: InternalResult, b: InternalResult) => b.score - a.score);
+  return rows
+    .map((row: Record<string, unknown>) => {
+      const rawScore = row.combined_score as number;
+      return {
+        id: row.id as string,
+        tier: row.tier as string,
+        content: row.content as string,
+        metadata: {
+          type: row.type as string,
+          topics: (row.topics as string[]) || [],
+          persons: (row.people as string[]) || [],
+          created: (row.created_at as Date).toISOString(),
+          updated: (row.updated_at as Date).toISOString(),
+        },
+        score: applyTierWeight(rawScore, row.tier as string),
+        match_type: row.match_type as MatchType,
+        rawScore,
+        rawEmbedding: fetchEmbeddings ? parseEmbedding(row.raw_embedding) : undefined,
+      };
+    })
+    .sort((a: InternalResult, b: InternalResult) => b.score - a.score);
 }
 
 async function fulltextSearchTier(
@@ -289,24 +297,26 @@ async function fulltextSearchTier(
 
   const { rows } = await pool.query(sql, params);
 
-  return rows.map((row: Record<string, unknown>) => {
-    const rawScore = row.fulltext_score as number;
-    return {
-      id: row.id as string,
-      tier: row.tier as string,
-      content: row.content as string,
-      metadata: {
-        type: row.type as string,
-        topics: (row.topics as string[]) || [],
-        persons: (row.people as string[]) || [],
-        created: (row.created_at as Date).toISOString(),
-        updated: (row.updated_at as Date).toISOString(),
-      },
-      score: applyTierWeight(rawScore, row.tier as string),
-      match_type: 'fulltext' as MatchType,
-      rawScore,
-    };
-  }).sort((a: InternalResult, b: InternalResult) => b.score - a.score);
+  return rows
+    .map((row: Record<string, unknown>) => {
+      const rawScore = row.fulltext_score as number;
+      return {
+        id: row.id as string,
+        tier: row.tier as string,
+        content: row.content as string,
+        metadata: {
+          type: row.type as string,
+          topics: (row.topics as string[]) || [],
+          persons: (row.people as string[]) || [],
+          created: (row.created_at as Date).toISOString(),
+          updated: (row.updated_at as Date).toISOString(),
+        },
+        score: applyTierWeight(rawScore, row.tier as string),
+        match_type: 'fulltext' as MatchType,
+        rawScore,
+      };
+    })
+    .sort((a: InternalResult, b: InternalResult) => b.score - a.score);
 }
 
 // Progressive tier search: searches tier by tier, top-down, stopping early when a high-confidence
@@ -325,18 +335,26 @@ async function progressiveHybridSearch(
 
   for (const tier of TIER_ORDER) {
     tiersSearched.push(tier);
-    const tierResults = await hybridSearchTier(pool, query, queryEmbedding, topK, tier, true, entityId);
+    const tierResults = await hybridSearchTier(
+      pool,
+      query,
+      queryEmbedding,
+      topK,
+      tier,
+      true,
+      entityId,
+    );
 
     // Merge without duplicates
     for (const r of tierResults) {
-      if (!allResults.some(existing => existing.id === r.id)) {
+      if (!allResults.some((existing) => existing.id === r.id)) {
         allResults.push(r);
       }
     }
 
     // Early stop: if best raw score exceeds confidence threshold, no need to dig deeper
     if (allResults.length > 0) {
-      const topRawScore = Math.max(...allResults.map(r => r.rawScore));
+      const topRawScore = Math.max(...allResults.map((r) => r.rawScore));
       if (topRawScore >= confidenceThreshold) {
         earlyStopped = true;
         break;
@@ -438,14 +456,15 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
   let hasDbEmbeddings = false;
   if (queryEmbedding) {
     const embCheck = await pool.query(
-      'SELECT EXISTS(SELECT 1 FROM memories WHERE embedding IS NOT NULL) AS has_embeddings'
+      'SELECT EXISTS(SELECT 1 FROM memories WHERE embedding IS NOT NULL) AS has_embeddings',
     );
     hasDbEmbeddings = embCheck.rows[0].has_embeddings;
   }
 
   const useHybrid = queryEmbedding !== null && hasDbEmbeddings;
   const searchMode: SearchMode = useHybrid ? 'semantic' : 'fulltext_only';
-  const effectiveMinScore = min_score ?? (useHybrid ? DEFAULT_MIN_SCORE_HYBRID : DEFAULT_MIN_SCORE_FULLTEXT);
+  const effectiveMinScore =
+    min_score ?? (useHybrid ? DEFAULT_MIN_SCORE_HYBRID : DEFAULT_MIN_SCORE_FULLTEXT);
 
   // Fetch a larger candidate pool so MMR has room to diversify
   const candidateLimit = Math.max(top_k * 3, 30);
@@ -463,13 +482,28 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
     tiersSearched = tier ? [tier] : (TIER_ORDER as string[]);
   } else if (useHybrid && progressive && !tier) {
     // Phase 3: progressive tier search — most valuable in semantic mode
-    const r = await progressiveHybridSearch(pool, query, queryEmbedding!, candidateLimit, confidence_threshold, entityId);
+    const r = await progressiveHybridSearch(
+      pool,
+      query,
+      queryEmbedding!,
+      candidateLimit,
+      confidence_threshold,
+      entityId,
+    );
     rawResults = r.results;
     tiersSearched = r.tiersSearched;
     earlyStopped = r.earlyStopped;
   } else if (useHybrid) {
     // Flat hybrid search: tier explicitly set or progressive disabled
-    rawResults = await hybridSearchTier(pool, query, queryEmbedding!, candidateLimit, tier, true, entityId);
+    rawResults = await hybridSearchTier(
+      pool,
+      query,
+      queryEmbedding!,
+      candidateLimit,
+      tier,
+      true,
+      entityId,
+    );
     tiersSearched = tier ? [tier] : (TIER_ORDER as string[]);
   } else {
     // Fulltext-only fallback: no embeddings available
@@ -478,7 +512,7 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
   }
 
   // Phase 1a: relevance floor — drop results below minimum quality threshold
-  const floorPassed = rawResults.filter(r => r.rawScore >= effectiveMinScore);
+  const floorPassed = rawResults.filter((r) => r.rawScore >= effectiveMinScore);
 
   // Phase 1b: MMR diversity — re-rank to eliminate near-duplicate results
   const diverse = applyMMR(floorPassed, diversity, max_tokens ? candidateLimit : top_k);
@@ -503,7 +537,7 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
     tokensUsed = finalResults.reduce((sum, r) => sum + estimateTokens(r.content), 0);
   }
 
-  const ids = finalResults.map(r => r.id);
+  const ids = finalResults.map((r) => r.id);
   const signals = await getSignalsForMemoryIds(pool, ids);
 
   // SPEC-046: when the entity filter is active, attach per-memory entity_links

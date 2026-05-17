@@ -79,13 +79,16 @@ export interface CompileFs {
 const realFs: CompileFs = {
   ensureDir: (p) => mkdir(p, { recursive: true }).then(() => undefined),
   writeFile: (p, c) => writeFile(p, c, 'utf-8'),
-  deleteFile: (p) => existsSync(p) ? rm(p, { force: true }) : Promise.resolve(),
+  deleteFile: (p) => (existsSync(p) ? rm(p, { force: true }) : Promise.resolve()),
   readManifest,
   writeManifest,
   exists: existsSync,
 };
 
-export async function runCompile(opts: RunCompileOptions, deps: RunCompileDeps): Promise<CompileSummary> {
+export async function runCompile(
+  opts: RunCompileOptions,
+  deps: RunCompileDeps,
+): Promise<CompileSummary> {
   const fs = deps.fs ?? realFs;
   const stdout = deps.stdout ?? ((s) => process.stdout.write(s));
   validateOptions(opts);
@@ -174,7 +177,11 @@ export async function runCompile(opts: RunCompileOptions, deps: RunCompileDeps):
       await fs.writeFile(absPath, fileContent);
       filesWritten.push(absPath);
     }
-    newManifest.topics.push({ topic: opts.topic, path: relPath, source_memory_ids: result.source_memory_ids });
+    newManifest.topics.push({
+      topic: opts.topic,
+      path: relPath,
+      source_memory_ids: result.source_memory_ids,
+    });
   }
 
   // ---- Manifest + stale cleanup ----
@@ -183,7 +190,10 @@ export async function runCompile(opts: RunCompileOptions, deps: RunCompileDeps):
     // Merge with prior manifest entries that we DIDN'T touch this run, so a
     // tier-only invocation doesn't drop unrelated topic entries.
     const prev = await fs.readManifest(opts.compiledDir);
-    const merged = mergeManifest(prev, newManifest, { tiersTouched: tiersInScope, topicsTouched: topicsInScope });
+    const merged = mergeManifest(prev, newManifest, {
+      tiersTouched: tiersInScope,
+      topicsTouched: topicsInScope,
+    });
     const stale = computeStaleFiles(prev, merged, {
       tiers: tiersInScope,
       topics: topicsInScope,

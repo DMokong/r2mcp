@@ -28,7 +28,10 @@ export interface MeditateResult {
   lint_findings?: LintFinding[];
 }
 
-export async function meditate(input: MeditateInput, projectRoot?: string): Promise<MeditateResult> {
+export async function meditate(
+  input: MeditateInput,
+  projectRoot?: string,
+): Promise<MeditateResult> {
   const pool = getPool();
 
   // 1. Archive stale entries

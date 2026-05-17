@@ -4,12 +4,7 @@
  * LLM calls (SPEC-044 C.R5).
  */
 
-export type CheckName =
-  | 'contradictions'
-  | 'stale'
-  | 'orphans'
-  | 'drift'
-  | 'superseded_unflagged';
+export type CheckName = 'contradictions' | 'stale' | 'orphans' | 'drift' | 'superseded_unflagged';
 
 /**
  * Suggested actions are a closed vocabulary so callers can route findings
@@ -17,12 +12,12 @@ export type CheckName =
  * subset that fits its domain.
  */
 export type SuggestedAction =
-  | 'archive_one'           // for contradictions: archive one of the two memories
-  | 'add_supersedes_edge'   // for contradictions: convert to supersedes if temporal
-  | 'human_review'          // for contradictions or drift: needs human judgment
-  | 'archive'               // for stale / orphans: archive the memory
-  | 'reclassify'            // for drift: re-run the classifier on this pair
-  | 'fix_edge_type';        // for superseded_unflagged: rewrite the edge type
+  | 'archive_one' // for contradictions: archive one of the two memories
+  | 'add_supersedes_edge' // for contradictions: convert to supersedes if temporal
+  | 'human_review' // for contradictions or drift: needs human judgment
+  | 'archive' // for stale / orphans: archive the memory
+  | 'reclassify' // for drift: re-run the classifier on this pair
+  | 'fix_edge_type'; // for superseded_unflagged: rewrite the edge type
 
 export interface LintFinding {
   check: CheckName;

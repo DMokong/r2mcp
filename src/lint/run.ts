@@ -33,15 +33,15 @@ export async function runLint(input: LintInput, pool: PoolLike): Promise<LintRes
   const findings: LintFinding[] = [];
   for (const check of checksToRun) {
     if (check === 'contradictions') {
-      findings.push(...await findContradictions(pool, { limit }));
+      findings.push(...(await findContradictions(pool, { limit })));
     } else if (check === 'stale') {
-      findings.push(...await findStale(pool, { sinceDays, limit }));
+      findings.push(...(await findStale(pool, { sinceDays, limit })));
     } else if (check === 'orphans') {
-      findings.push(...await findOrphans(pool, { limit }));
+      findings.push(...(await findOrphans(pool, { limit })));
     } else if (check === 'drift') {
-      findings.push(...await findDrift(pool, { limit }));
+      findings.push(...(await findDrift(pool, { limit })));
     } else if (check === 'superseded_unflagged') {
-      findings.push(...await findSupersededUnflagged(pool, { limit }));
+      findings.push(...(await findSupersededUnflagged(pool, { limit })));
     }
   }
 
@@ -63,7 +63,11 @@ export async function runLint(input: LintInput, pool: PoolLike): Promise<LintRes
  */
 function buildSummary(findings: LintFinding[]): LintSummary {
   const by_check: LintSummary['by_check'] = {
-    contradictions: 0, stale: 0, orphans: 0, drift: 0, superseded_unflagged: 0,
+    contradictions: 0,
+    stale: 0,
+    orphans: 0,
+    drift: 0,
+    superseded_unflagged: 0,
   };
   for (const f of findings) by_check[f.check]++;
   return {
@@ -94,7 +98,11 @@ async function applyFixes(
         [f.memory_id],
       );
       applied.push({ memory_id: f.memory_id, action: 'archive' });
-    } else if (f.check === 'superseded_unflagged' && f.suggested_action === 'fix_edge_type' && f.related_memory_id) {
+    } else if (
+      f.check === 'superseded_unflagged' &&
+      f.suggested_action === 'fix_edge_type' &&
+      f.related_memory_id
+    ) {
       await pool.query(
         `UPDATE memory_edges
          SET relation = 'supersedes', updated_at = NOW()

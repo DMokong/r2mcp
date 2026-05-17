@@ -33,9 +33,7 @@ Do NOT add headers, lists, or citation tags — the compiler inserts those. Stay
 }
 
 export function memoryListPromptFragment(memories: MemoryForCompile[]): string {
-  return memories
-    .map((m) => `- (id=${m.id}, type=${m.type}) ${m.content}`)
-    .join('\n');
+  return memories.map((m) => `- (id=${m.id}, type=${m.type}) ${m.content}`).join('\n');
 }
 
 export function tierClusterUserPrompt(topic: string, memories: MemoryForCompile[]): string {

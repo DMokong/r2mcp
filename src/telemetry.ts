@@ -45,7 +45,7 @@ export const embeddingCost = meter.createCounter('r2mcp.memory.embedding_cost_us
 export async function withToolSpan<T>(
   toolName: string,
   attributes: Record<string, string | number | boolean>,
-  fn: (span: Span) => Promise<T>
+  fn: (span: Span) => Promise<T>,
 ): Promise<T> {
   return tracer.startActiveSpan(`memory.${toolName}`, async (span) => {
     const start = Date.now();
@@ -69,12 +69,54 @@ export async function withToolSpan<T>(
 }
 
 /**
+ * Wraps a single LLM provider.complete() call in a child span so the
+ * cross-process parent context (restored from OTEL_TRACEPARENT in scripts)
+ * has a concrete operation to inherit. Attributes mirror the
+ * provider.complete result: model, cost_usd, latency_ms. The provider name
+ * is supplied separately (the response payload doesn't carry it).
+ *
+ * spanName SHOULD be `memory.<op>.call` (e.g. memory.extract_entities.call)
+ * so traces group naturally with the top-level tool span.
+ *
+ * (claw-1ejd) — without this wrapper the OTEL_TRACEPARENT plumbing is a
+ * no-op because the subprocess never opens a span to inherit the parent.
+ */
+export async function withLLMCallSpan<T extends { cost_usd?: number; latency_ms?: number }>(
+  spanName: string,
+  attrs: { provider: string; model?: string },
+  fn: () => Promise<T>,
+): Promise<T> {
+  return tracer.startActiveSpan(spanName, async (span) => {
+    const start = Date.now();
+    try {
+      span.setAttribute('llm.provider', attrs.provider);
+      if (attrs.model) span.setAttribute('llm.model', attrs.model);
+      const result = await fn();
+      if (typeof result.cost_usd === 'number') {
+        span.setAttribute('llm.cost_usd', result.cost_usd);
+      }
+      if (typeof result.latency_ms === 'number') {
+        span.setAttribute('llm.latency_ms', result.latency_ms);
+      }
+      span.setStatus({ code: SpanStatusCode.OK });
+      return result;
+    } catch (err) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+      throw err;
+    } finally {
+      span.setAttribute('duration_ms', Date.now() - start);
+      span.end();
+    }
+  });
+}
+
+/**
  * Wraps an embedding API call with OTel span + metrics.
  */
 export async function withEmbeddingSpan<T>(
   textCount: number,
   fn: () => Promise<T>,
-  totalChars?: number
+  totalChars?: number,
 ): Promise<T> {
   return tracer.startActiveSpan('memory.embedding', async (span) => {
     const start = Date.now();

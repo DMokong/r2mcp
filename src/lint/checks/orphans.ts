@@ -32,10 +32,7 @@ const ORPHANS_SQL = `
   LIMIT $1
 `;
 
-export async function findOrphans(
-  pool: PoolLike,
-  opts: { limit: number },
-): Promise<LintFinding[]> {
+export async function findOrphans(pool: PoolLike, opts: { limit: number }): Promise<LintFinding[]> {
   const rows = await pool.query<OrphanRow>(ORPHANS_SQL, [opts.limit]);
   return rows.rows.map((r) => ({
     check: 'orphans',

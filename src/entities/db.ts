@@ -69,9 +69,7 @@ export async function mergeAliases(
   entityId: string,
   newAliases: string[],
 ): Promise<string[]> {
-  const normalized = newAliases
-    .map((a) => normalizeEntityName(a))
-    .filter((a) => a.length > 0);
+  const normalized = newAliases.map((a) => normalizeEntityName(a)).filter((a) => a.length > 0);
   const { rows } = await client.query(
     `UPDATE entities
      SET aliases = ARRAY(SELECT DISTINCT UNNEST(aliases || $2::text[])),
@@ -159,9 +157,7 @@ export async function findCandidateMemories(
   if (filter.sinceDays !== undefined) {
     if (filter.sinceDays === 0) return [];
     params.push(filter.sinceDays);
-    clauses.push(
-      `m.updated_at >= NOW() - ($${params.length}::int * INTERVAL '1 day')`,
-    );
+    clauses.push(`m.updated_at >= NOW() - ($${params.length}::int * INTERVAL '1 day')`);
   }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
   const { rows } = await client.query(
@@ -177,12 +173,7 @@ export async function findCandidateMemories(
 export async function getEntityLinksForMemories(
   client: DbClient,
   memoryIds: string[],
-): Promise<
-  Map<
-    string,
-    Array<{ type: EntityType; canonical_name: string; confidence: number }>
-  >
-> {
+): Promise<Map<string, Array<{ type: EntityType; canonical_name: string; confidence: number }>>> {
   if (memoryIds.length === 0) return new Map();
   // Cast confidence::float — schema is NUMERIC(3,2) to match memory_edges
   // (SPEC-043), but pg returns NUMERIC as a JS string by default. Callers

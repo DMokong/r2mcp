@@ -46,7 +46,14 @@ server.tool(
     tier: z.enum(['preferences', 'project-context', 'conversations']),
     content: z.string(),
     metadata: z.object({
-      type: z.enum(['preference', 'decision', 'context', 'relationship', 'observation', 'rejection']),
+      type: z.enum([
+        'preference',
+        'decision',
+        'context',
+        'relationship',
+        'observation',
+        'rejection',
+      ]),
       topics: z.array(z.string()).optional(),
       people: z.array(z.string()).optional(),
       section: z.string().optional(),
@@ -55,111 +62,157 @@ server.tool(
     target_id: z.string().optional(),
   },
   async (args) => {
-    const result = await withToolSpan('remember', {
-      operation: args.operation,
-      tier: args.tier,
-    }, async (span) => {
-      const r = await remember(
-        {
-          operation: args.operation,
-          tier: args.tier,
-          content: args.content,
-          metadata: args.metadata,
-          target_id: args.target_id,
-        },
-        PROJECT_ROOT
-      );
-      span.setAttribute('dedup_triggered', r.dedup ?? false);
-      return r;
-    });
+    const result = await withToolSpan(
+      'remember',
+      {
+        operation: args.operation,
+        tier: args.tier,
+      },
+      async (span) => {
+        const r = await remember(
+          {
+            operation: args.operation,
+            tier: args.tier,
+            content: args.content,
+            metadata: args.metadata,
+            target_id: args.target_id,
+          },
+          PROJECT_ROOT,
+        );
+        span.setAttribute('dedup_triggered', r.dedup ?? false);
+        return r;
+      },
+    );
 
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 server.tool(
   'recall',
   'Search memory using semantic similarity and full-text search. Supports progressive tier search, MMR diversity, relevance floor, and token-budget-based retrieval.',
   {
-    query: z.string().optional().default('').describe('Free-text query. Optional when `entity` is provided — SPEC-046 entity-only recall short-circuits without a query.'),
+    query: z
+      .string()
+      .optional()
+      .default('')
+      .describe(
+        'Free-text query. Optional when `entity` is provided — SPEC-046 entity-only recall short-circuits without a query.',
+      ),
     top_k: z.number().optional().default(10),
     tier: z.enum(['preferences', 'project-context', 'conversations']).optional(),
-    max_tokens: z.number().optional().describe('Token budget — return results until budget is exhausted'),
-    min_score: z.number().optional().describe('Minimum relevance score threshold (default: 0.0). Suggested: 0.3 for semantic, 0.1 for fulltext.'),
-    diversity: z.number().min(0).max(1).optional().describe('MMR lambda: 1.0 = pure relevance, 0.0 = pure diversity (default: 0.7)'),
-    progressive: z.boolean().optional().describe('Search tiers top-down, stopping early when high-confidence results found (default: true)'),
-    confidence_threshold: z.number().optional().describe('Raw score threshold for progressive early-stop (default: 0.82)'),
-    entity: z.string().optional().describe('SPEC-046: filter results to memories linked to this entity (canonical_name or alias; case-insensitive). When set, response adds entity_resolved/entity_id and per-result entity_links.'),
+    max_tokens: z
+      .number()
+      .optional()
+      .describe('Token budget — return results until budget is exhausted'),
+    min_score: z
+      .number()
+      .optional()
+      .describe(
+        'Minimum relevance score threshold (default: 0.0). Suggested: 0.3 for semantic, 0.1 for fulltext.',
+      ),
+    diversity: z
+      .number()
+      .min(0)
+      .max(1)
+      .optional()
+      .describe('MMR lambda: 1.0 = pure relevance, 0.0 = pure diversity (default: 0.7)'),
+    progressive: z
+      .boolean()
+      .optional()
+      .describe(
+        'Search tiers top-down, stopping early when high-confidence results found (default: true)',
+      ),
+    confidence_threshold: z
+      .number()
+      .optional()
+      .describe('Raw score threshold for progressive early-stop (default: 0.82)'),
+    entity: z
+      .string()
+      .optional()
+      .describe(
+        'SPEC-046: filter results to memories linked to this entity (canonical_name or alias; case-insensitive). When set, response adds entity_resolved/entity_id and per-result entity_links.',
+      ),
   },
   async (args) => {
     const queryStr = args.query ?? '';
-    const result = await withToolSpan('recall', {
-      query_length: queryStr.length,
-      tier: args.tier || 'all',
-      top_k: args.top_k,
-      progressive: args.progressive ?? true,
-      entity: args.entity ?? '',
-    }, async (span) => {
-      const r = await recall({
-        query: queryStr,
+    const result = await withToolSpan(
+      'recall',
+      {
+        query_length: queryStr.length,
+        tier: args.tier || 'all',
         top_k: args.top_k,
-        tier: args.tier,
-        max_tokens: args.max_tokens,
-        min_score: args.min_score,
-        diversity: args.diversity,
-        progressive: args.progressive,
-        confidence_threshold: args.confidence_threshold,
-        entity: args.entity,
-      });
-      span.setAttribute('result_count', r.total_results ?? 0);
-      span.setAttribute('search_mode', r.search_mode ?? 'unknown');
-      span.setAttribute('early_stopped', r.early_stopped ?? false);
-      span.setAttribute('tiers_searched', (r.tiers_searched ?? []).join(','));
-      span.setAttribute('tokens_used', r.tokens_used ?? 0);
-      return r;
-    });
+        progressive: args.progressive ?? true,
+        entity: args.entity ?? '',
+      },
+      async (span) => {
+        const r = await recall({
+          query: queryStr,
+          top_k: args.top_k,
+          tier: args.tier,
+          max_tokens: args.max_tokens,
+          min_score: args.min_score,
+          diversity: args.diversity,
+          progressive: args.progressive,
+          confidence_threshold: args.confidence_threshold,
+          entity: args.entity,
+        });
+        span.setAttribute('result_count', r.total_results ?? 0);
+        span.setAttribute('search_mode', r.search_mode ?? 'unknown');
+        span.setAttribute('early_stopped', r.early_stopped ?? false);
+        span.setAttribute('tiers_searched', (r.tiers_searched ?? []).join(','));
+        span.setAttribute('tokens_used', r.tokens_used ?? 0);
+        return r;
+      },
+    );
 
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 server.tool(
   'search',
   'Search memory using structured metadata filters (type, tier, topics, persons, date range) with optional full-text query.',
   {
-    filter: z.object({
-      type: z.string().optional(),
-      tier: z.string().optional(),
-      topics: z.array(z.string()).optional(),
-      persons: z.array(z.string()).optional(),
-      created_after: z.string().optional(),
-      created_before: z.string().optional(),
-    }).optional(),
+    filter: z
+      .object({
+        type: z.string().optional(),
+        tier: z.string().optional(),
+        topics: z.array(z.string()).optional(),
+        persons: z.array(z.string()).optional(),
+        created_after: z.string().optional(),
+        created_before: z.string().optional(),
+      })
+      .optional(),
     query: z.string().optional(),
     limit: z.number().optional(),
   },
   async (args) => {
-    const result = await withToolSpan('search', {
-      has_query: !!args.query,
-      tier_filter: args.filter?.tier || 'all',
-    }, async (span) => {
-      const r = await search({
-        filter: args.filter,
-        query: args.query,
-        limit: args.limit,
-      });
-      span.setAttribute('result_count', r.count ?? 0);
-      return r;
-    });
+    const result = await withToolSpan(
+      'search',
+      {
+        has_query: !!args.query,
+        tier_filter: args.filter?.tier || 'all',
+      },
+      async (span) => {
+        const r = await search({
+          filter: args.filter,
+          query: args.query,
+          limit: args.limit,
+        });
+        span.setAttribute('result_count', r.count ?? 0);
+        return r;
+      },
+    );
 
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 server.tool(
@@ -176,7 +229,7 @@ server.tool(
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 server.tool(
@@ -194,7 +247,7 @@ server.tool(
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 server.tool(
@@ -206,23 +259,27 @@ server.tool(
     include_lint: z.boolean().optional().default(false),
   },
   async (args) => {
-    const result = await withToolSpan('meditate', {
-      mode: args.mode,
-      dry_run: args.dry_run,
-      include_lint: args.include_lint,
-    }, async (span) => {
-      const r = await meditate(
-        { mode: args.mode, dry_run: args.dry_run, include_lint: args.include_lint },
-        PROJECT_ROOT,
-      );
-      span.setAttribute('entries_affected', r.total_changes ?? 0);
-      return r;
-    });
+    const result = await withToolSpan(
+      'meditate',
+      {
+        mode: args.mode,
+        dry_run: args.dry_run,
+        include_lint: args.include_lint,
+      },
+      async (span) => {
+        const r = await meditate(
+          { mode: args.mode, dry_run: args.dry_run, include_lint: args.include_lint },
+          PROJECT_ROOT,
+        );
+        span.setAttribute('entries_affected', r.total_changes ?? 0);
+        return r;
+      },
+    );
 
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 server.tool(
@@ -237,153 +294,224 @@ server.tool(
     provider: z.enum(['claude-code', 'anthropic', 'openrouter']).optional(),
   },
   async (args) => {
-    const result = await withToolSpan('compile', {
-      scope: args.tier ?? args.topic ?? (args.all ? 'all' : 'unknown'),
-      dry_run: args.dry_run ?? false,
-    }, async (span) => {
-      const r = await compile({
-        tier: args.tier,
-        all: args.all,
-        topic: args.topic,
-        dry_run: args.dry_run,
-        max_cost_usd: args.max_cost_usd,
-        provider: args.provider,
-      }, { cwd: PROJECT_ROOT });
-      span.setAttribute('files_written', r.files_written.length);
-      span.setAttribute('hit_cost_cap', r.hit_cost_cap);
-      span.setAttribute('provider', r.provider);
-      return r;
-    });
+    const result = await withToolSpan(
+      'compile',
+      {
+        scope: args.tier ?? args.topic ?? (args.all ? 'all' : 'unknown'),
+        dry_run: args.dry_run ?? false,
+      },
+      async (span) => {
+        const r = await compile(
+          {
+            tier: args.tier,
+            all: args.all,
+            topic: args.topic,
+            dry_run: args.dry_run,
+            max_cost_usd: args.max_cost_usd,
+            provider: args.provider,
+          },
+          { cwd: PROJECT_ROOT },
+        );
+        span.setAttribute('files_written', r.files_written.length);
+        span.setAttribute('hit_cost_cap', r.hit_cost_cap);
+        span.setAttribute('provider', r.provider);
+        return r;
+      },
+    );
 
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 server.tool(
   'classify',
   'Classify candidate memory pairs into typed edges (supports, contradicts, supersedes, evolved_into, depends_on, related_to). Wraps the SPEC-043 edge classifier with cost cap and provider auto-fallback. Subprocess-spawned per the MCP-server-makes-no-LLM-calls invariant.',
   {
-    since_days: z.number().optional().describe('Filter candidate pairs to memories updated in the last N days'),
-    max_cost_usd: z.number().optional().describe('Per-run cost cap in USD; default $1.00 from R2MCP_EDGE_MAX_USD'),
+    since_days: z
+      .number()
+      .optional()
+      .describe('Filter candidate pairs to memories updated in the last N days'),
+    max_cost_usd: z
+      .number()
+      .optional()
+      .describe('Per-run cost cap in USD; default $1.00 from R2MCP_EDGE_MAX_USD'),
     dry_run: z.boolean().optional().describe('Estimate-only — no edges written'),
-    resume_run_id: z.string().optional().describe('Resume a prior run_id; terminal pairs not re-classified'),
-    provider: z.enum(['claude-code', 'anthropic', 'openrouter']).optional().describe('Force a specific provider for this run'),
+    resume_run_id: z
+      .string()
+      .optional()
+      .describe('Resume a prior run_id; terminal pairs not re-classified'),
+    provider: z
+      .enum(['claude-code', 'anthropic', 'openrouter'])
+      .optional()
+      .describe('Force a specific provider for this run'),
   },
   async (args) => {
-    const result = await withToolSpan('classify', {
-      since_days: args.since_days ?? 0,
-      provider: args.provider ?? 'auto',
-    }, async (span) => {
-      const r = await classify({
-        since_days: args.since_days,
-        max_cost_usd: args.max_cost_usd,
-        dry_run: args.dry_run,
-        resume_run_id: args.resume_run_id,
-        provider: args.provider,
-      }, { cwd: PROJECT_ROOT });
-      span.setAttribute('edges_written', r.edges_written);
-      span.setAttribute('total_cost_usd', r.total_cost_usd);
-      span.setAttribute('hit_cost_cap', r.hit_cost_cap);
-      return r;
-    });
+    const result = await withToolSpan(
+      'classify',
+      {
+        since_days: args.since_days ?? 0,
+        provider: args.provider ?? 'auto',
+      },
+      async (span) => {
+        const r = await classify(
+          {
+            since_days: args.since_days,
+            max_cost_usd: args.max_cost_usd,
+            dry_run: args.dry_run,
+            resume_run_id: args.resume_run_id,
+            provider: args.provider,
+          },
+          { cwd: PROJECT_ROOT },
+        );
+        span.setAttribute('edges_written', r.edges_written);
+        span.setAttribute('total_cost_usd', r.total_cost_usd);
+        span.setAttribute('hit_cost_cap', r.hit_cost_cap);
+        return r;
+      },
+    );
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 server.tool(
   'extract_entities',
   'Extract structured entities (project / person / tool / decision) from memories. Spawns a subprocess driver that uses LLMProvider (Haiku-class). Inherits cost cap, resumable runs, and candidate pre-filtering from SPEC-043 patterns.',
   {
-    since_days: z.number().int().min(0).optional().describe('Filter candidate memories to those updated in the last N days'),
-    max_cost_usd: z.number().nonnegative().optional().describe('Per-run cost cap in USD; default $1.00 from R2MCP_ENTITY_MAX_USD'),
-    provider: z.enum(['claude-code', 'anthropic', 'openrouter']).optional().describe('Force a specific provider for this run'),
-    resume: z.string().uuid().optional().describe('Resume a prior run_id; memories already terminal in that run are skipped'),
-    full: z.boolean().optional().describe('Backfill mode — process all memories regardless of recency. Mutually exclusive with since_days.'),
-    context_top_n: z.number().int().positive().optional().describe('Top-N existing entities to include in extraction context'),
+    since_days: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('Filter candidate memories to those updated in the last N days'),
+    max_cost_usd: z
+      .number()
+      .nonnegative()
+      .optional()
+      .describe('Per-run cost cap in USD; default $1.00 from R2MCP_ENTITY_MAX_USD'),
+    provider: z
+      .enum(['claude-code', 'anthropic', 'openrouter'])
+      .optional()
+      .describe('Force a specific provider for this run'),
+    resume: z
+      .string()
+      .uuid()
+      .optional()
+      .describe('Resume a prior run_id; memories already terminal in that run are skipped'),
+    full: z
+      .boolean()
+      .optional()
+      .describe(
+        'Backfill mode — process all memories regardless of recency. Mutually exclusive with since_days.',
+      ),
+    context_top_n: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe('Top-N existing entities to include in extraction context'),
   },
   async (args) => {
-    const result = await withToolSpan('extract_entities', {
-      since_days: args.since_days ?? 0,
-      provider: args.provider ?? 'auto',
-      full: args.full ?? false,
-    }, async (span) => {
-      const r = await extractEntitiesTool({
-        since_days: args.since_days,
-        max_cost_usd: args.max_cost_usd,
-        provider: args.provider,
-        resume: args.resume,
-        full: args.full,
-        context_top_n: args.context_top_n,
-      }, { cwd: PROJECT_ROOT });
-      span.setAttribute('memories_seen', r.memories_seen);
-      span.setAttribute('memories_extracted', r.memories_extracted);
-      span.setAttribute('entities_created', r.entities_created);
-      span.setAttribute('entities_updated', r.entities_updated);
-      span.setAttribute('links_created', r.links_created);
-      span.setAttribute('total_cost_usd', r.total_cost_usd);
-      span.setAttribute('hit_cost_cap', r.hit_cost_cap);
-      return r;
-    });
+    const result = await withToolSpan(
+      'extract_entities',
+      {
+        since_days: args.since_days ?? 0,
+        provider: args.provider ?? 'auto',
+        full: args.full ?? false,
+      },
+      async (span) => {
+        const r = await extractEntitiesTool(
+          {
+            since_days: args.since_days,
+            max_cost_usd: args.max_cost_usd,
+            provider: args.provider,
+            resume: args.resume,
+            full: args.full,
+            context_top_n: args.context_top_n,
+          },
+          { cwd: PROJECT_ROOT },
+        );
+        span.setAttribute('memories_seen', r.memories_seen);
+        span.setAttribute('memories_extracted', r.memories_extracted);
+        span.setAttribute('entities_created', r.entities_created);
+        span.setAttribute('entities_updated', r.entities_updated);
+        span.setAttribute('links_created', r.links_created);
+        span.setAttribute('total_cost_usd', r.total_cost_usd);
+        span.setAttribute('hit_cost_cap', r.hit_cost_cap);
+        return r;
+      },
+    );
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 server.tool(
   'dump_edges_sidecar',
   'Write memory_edges and memories as JSON sidecar files for downstream consumers (Memory Explorer, /memory-doctor, etc.). In-process pgvector dump — no subprocess, no LLM calls.',
   {
-    out_dir: z.string().describe('Absolute path to the directory where edges.json + memories.json land. Required.'),
+    out_dir: z
+      .string()
+      .describe('Absolute path to the directory where edges.json + memories.json land. Required.'),
   },
   async (args) => {
-    const result = await withToolSpan('dump_edges_sidecar', {
-      out_dir: args.out_dir,
-    }, async (span) => {
-      const r = await dumpEdgesSidecarTool({ out_dir: args.out_dir });
-      span.setAttribute('memories_count', r.memories_count);
-      span.setAttribute('edges_count', r.edges_count);
-      return r;
-    });
+    const result = await withToolSpan(
+      'dump_edges_sidecar',
+      {
+        out_dir: args.out_dir,
+      },
+      async (span) => {
+        const r = await dumpEdgesSidecarTool({ out_dir: args.out_dir });
+        span.setAttribute('memories_count', r.memories_count);
+        span.setAttribute('edges_count', r.edges_count);
+        return r;
+      },
+    );
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 server.tool(
   'lint',
   'Surface structural feedback on the memory store: contradictions, stale, orphans, drift, superseded_unflagged. SQL-only (no LLM calls). Pass `fix: true` to apply auto-fixes for findings with confidence >= 0.9.',
   {
-    check: z.enum(['contradictions', 'stale', 'orphans', 'drift', 'superseded_unflagged']).optional(),
+    check: z
+      .enum(['contradictions', 'stale', 'orphans', 'drift', 'superseded_unflagged'])
+      .optional(),
     since_days: z.number().optional(),
     limit: z.number().optional(),
     fix: z.boolean().optional(),
   },
   async (args) => {
-    const result = await withToolSpan('lint', {
-      check: args.check ?? 'all',
-      fix: args.fix ?? false,
-    }, async (span) => {
-      const r = await lint({
-        check: args.check,
-        since_days: args.since_days,
-        limit: args.limit,
-        fix: args.fix,
-      });
-      span.setAttribute('total_findings', r.summary.total_findings);
-      span.setAttribute('fixes_applied', r.fixes_applied?.length ?? 0);
-      return r;
-    });
+    const result = await withToolSpan(
+      'lint',
+      {
+        check: args.check ?? 'all',
+        fix: args.fix ?? false,
+      },
+      async (span) => {
+        const r = await lint({
+          check: args.check,
+          since_days: args.since_days,
+          limit: args.limit,
+          fix: args.fix,
+        });
+        span.setAttribute('total_findings', r.summary.total_findings);
+        span.setAttribute('fixes_applied', r.fixes_applied?.length ?? 0);
+        return r;
+      },
+    );
 
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
     };
-  }
+  },
 );
 
 /**

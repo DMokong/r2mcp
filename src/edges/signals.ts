@@ -19,8 +19,10 @@ export async function getSignalsForMemoryIds(
 
   // Outgoing contradicts (memory in results -> some other memory)
   const contradictsRes = await pool.query<{
-    from_memory_id: string; to_memory_id: string;
-    rationale: string; confidence: string;
+    from_memory_id: string;
+    to_memory_id: string;
+    rationale: string;
+    confidence: string;
   }>(
     `SELECT from_memory_id, to_memory_id, rationale, confidence
      FROM memory_edges
@@ -30,8 +32,10 @@ export async function getSignalsForMemoryIds(
 
   // Supersession: surface in either direction so the consumer always sees it
   const supersedesRes = await pool.query<{
-    from_memory_id: string; to_memory_id: string;
-    rationale: string; confidence: string;
+    from_memory_id: string;
+    to_memory_id: string;
+    rationale: string;
+    confidence: string;
   }>(
     `SELECT from_memory_id, to_memory_id, rationale, confidence
      FROM memory_edges
