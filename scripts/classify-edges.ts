@@ -1,4 +1,9 @@
 #!/usr/bin/env tsx
+// OTel instrumentation MUST be imported first — before any other module —
+// so OTEL_TRACEPARENT propagation has an SDK to attach the parent context to
+// (claw-1ejd). Without this import, propagation.extract() is a no-op.
+import '../src/instrumentation.js';
+
 /**
  * SPEC-043 / SPEC-044 edge classifier CLI.
  *
@@ -22,6 +27,7 @@
  *   1 — fatal error (DB unreachable, no provider configured, etc.)
  */
 
+import { readFileSync, existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { initDb, getPool, closeDb } from '../src/db.js';
@@ -38,6 +44,21 @@ import {
   ProviderUnavailableError,
   type ProviderName,
 } from '../src/providers/index.js';
+
+// Load .env from project root — launchd-spawned subprocesses don't inherit
+// shell env, so OTEL_ENABLED + DB URL + provider keys must be loaded here
+// (claw-1ejd; mirrors src/index.ts).
+const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
+const envPath = resolve(PROJECT_ROOT, '.env');
+if (existsSync(envPath)) {
+  const envContent = readFileSync(envPath, 'utf-8');
+  for (const line of envContent.split('\n')) {
+    const match = line.match(/^([A-Z_]+)=(.+)$/);
+    if (match && !process.env[match[1]]) {
+      process.env[match[1]] = match[2].trim();
+    }
+  }
+}
 
 const CLASSIFIER_VERSION = 'edges-v1-2026-05-03';
 

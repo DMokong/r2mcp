@@ -1,4 +1,5 @@
 import type { LLMProvider } from '../providers/types.js';
+import { withLLMCallSpan } from '../telemetry.js';
 import type { EdgeRelation } from './types.js';
 
 export interface MemoryForClassify {
@@ -9,14 +10,26 @@ export interface MemoryForClassify {
 
 export interface PairForClassify {
   from: MemoryForClassify;
-  to:   MemoryForClassify;
+  to: MemoryForClassify;
 }
 
-export type Stage2Result =
-  | { kind: 'classified'; relation: EdgeRelation | 'none'; confidence: number; rationale: string; cost_usd: number; downgraded?: boolean };
+export type Stage2Result = {
+  kind: 'classified';
+  relation: EdgeRelation | 'none';
+  confidence: number;
+  rationale: string;
+  cost_usd: number;
+  downgraded?: boolean;
+};
 
 export const STAGE2_RELATIONS: ReadonlyArray<EdgeRelation | 'none'> = [
-  'supports', 'contradicts', 'supersedes', 'evolved_into', 'depends_on', 'related_to', 'none',
+  'supports',
+  'contradicts',
+  'supersedes',
+  'evolved_into',
+  'depends_on',
+  'related_to',
+  'none',
 ];
 
 const STAGE2_SYSTEM = `You classify the structural relation between two memories. Respond with JSON only.
@@ -52,10 +65,7 @@ const STAGE2_MAX_OUTPUT_TOKENS = 256;
  * for a rejection pair (despite being instructed otherwise in the system prompt),
  * the result is downgraded to "none".
  */
-export function isRejectionPair(
-  a: { type: string },
-  b: { type: string },
-): boolean {
+export function isRejectionPair(a: { type: string }, b: { type: string }): boolean {
   return a.type === 'rejection' || b.type === 'rejection';
 }
 
@@ -65,7 +75,11 @@ export function parseStage2Response(text: string): {
   rationale: string;
 } {
   // Strip optional ```json fences
-  const cleaned = text.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```\s*$/, '').trim();
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
@@ -90,12 +104,19 @@ export async function stage2OpusClassify(
   pair: PairForClassify,
 ): Promise<Stage2Result> {
   const userPrompt = `Memory A (id=${pair.from.id}, type=${pair.from.type}): ${pair.from.content}\n\nMemory B (id=${pair.to.id}, type=${pair.to.type}): ${pair.to.content}`;
-  const result = await provider.complete({
-    model: 'opus',
-    system: STAGE2_SYSTEM,
-    prompt: userPrompt,
-    max_tokens: STAGE2_MAX_OUTPUT_TOKENS,
-  });
+  // claw-1ejd: wrap the LLM call so the parent OTEL_TRACEPARENT context
+  // has a concrete child span to inherit when this runs as a subprocess.
+  const result = await withLLMCallSpan(
+    'memory.classify_edges.call',
+    { provider: provider.name, model: 'opus' },
+    () =>
+      provider.complete({
+        model: 'opus',
+        system: STAGE2_SYSTEM,
+        prompt: userPrompt,
+        max_tokens: STAGE2_MAX_OUTPUT_TOKENS,
+      }),
+  );
   const parsed = parseStage2Response(result.response);
 
   // AC10 guard: if the LLM returns contradicts despite being told not to for rejection

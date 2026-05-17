@@ -9,11 +9,8 @@
 
 import { clusterByTopic, topicTitle } from './clustering.js';
 import { tierSystemPrompt, tierClusterUserPrompt } from './prompts.js';
-import type {
-  CompileSectionResult,
-  CompileTierInput,
-  Tier,
-} from './types.js';
+import { withLLMCallSpan } from '../telemetry.js';
+import type { CompileSectionResult, CompileTierInput, Tier } from './types.js';
 
 const TIER_HEADERS: Record<Tier, string> = {
   preferences: 'Preferences and Decisions',
@@ -60,12 +57,18 @@ export async function compileTier(input: CompileTierInput): Promise<CompileSecti
     const heading = `### ${topicTitle(cluster.topic)}`;
     headers.push(heading);
 
-    const result = await provider.complete({
-      model: 'haiku',
-      system: tierSystemPrompt(tier),
-      prompt: tierClusterUserPrompt(cluster.topic, cluster.memories),
-      max_tokens: MAX_TOKENS_PER_CLUSTER,
-    });
+    // claw-1ejd: wrap LLM call for cross-process trace inheritance.
+    const result = await withLLMCallSpan(
+      'memory.compile_wiki.call',
+      { provider: provider.name, model: 'haiku' },
+      () =>
+        provider.complete({
+          model: 'haiku',
+          system: tierSystemPrompt(tier),
+          prompt: tierClusterUserPrompt(cluster.topic, cluster.memories),
+          max_tokens: MAX_TOKENS_PER_CLUSTER,
+        }),
+    );
     costMeter.totalCostUsd += result.cost_usd;
     sectionCost += result.cost_usd;
 

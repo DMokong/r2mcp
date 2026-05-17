@@ -155,6 +155,78 @@ describe('SPEC-046 recall(entity) — Task 10', () => {
     }
   });
 
+  // SPEC-046 Gate 2b follow-up (recommendation #3): pin the proper-subset
+  // semantic of entity+query composition. The intersection result must be a
+  // subset of BOTH (a) entity-only recall AND (b) query-only recall. The
+  // existing 'intersection narrows pool' test above asserts which memories
+  // appear; this one asserts the relationship to the two single-filter
+  // baselines explicitly so a future change to either filter that breaks
+  // intersection semantics fails this assertion deterministically.
+  it('AC3: entity+query result is a proper subset of entity-only AND query-only result sets', async () => {
+    // Seed: 3 memories with the shared keyword "pgvector".
+    //   m1 + m2 are linked to Speculator (subset of entity-only).
+    //   m3 matches the query but is unlinked (excluded by intersection).
+    const { rows: m1Row } = await pool.query(
+      `INSERT INTO memories (content, tier, type, fingerprint)
+       VALUES ('Speculator uses pgvector for memory search', 'preferences', 'preference', 'fp-subset-1') RETURNING id`,
+    );
+    const { rows: m2Row } = await pool.query(
+      `INSERT INTO memories (content, tier, type, fingerprint)
+       VALUES ('Speculator architecture and pgvector indexing notes', 'preferences', 'preference', 'fp-subset-2') RETURNING id`,
+    );
+    const { rows: m3Row } = await pool.query(
+      `INSERT INTO memories (content, tier, type, fingerprint)
+       VALUES ('OB1 also uses pgvector but is not the Speculator project', 'preferences', 'preference', 'fp-subset-3') RETURNING id`,
+    );
+    // Plus a fourth memory linked to Speculator but NOT matching the query —
+    // appears in entity-only result but NOT in intersection. This is what
+    // makes the intersection a PROPER subset (strictly smaller).
+    const { rows: m4Row } = await pool.query(
+      `INSERT INTO memories (content, tier, type, fingerprint)
+       VALUES ('Speculator quality pipeline notes — unrelated keyword', 'preferences', 'preference', 'fp-subset-4') RETURNING id`,
+    );
+    const m1 = m1Row[0].id, m2 = m2Row[0].id, m3 = m3Row[0].id, m4 = m4Row[0].id;
+
+    const spec = await upsertEntity(pool, {
+      type: 'project',
+      canonical_name: 'Speculator',
+      aliases: [],
+    });
+    await linkMemoryToEntity(pool, m1, spec.id, 0.95, 'classifier');
+    await linkMemoryToEntity(pool, m2, spec.id, 0.95, 'classifier');
+    await linkMemoryToEntity(pool, m4, spec.id, 0.95, 'classifier');
+
+    const entityOnly = await recall({ query: '', entity: 'Speculator' });
+    const queryOnly = await recall({ query: 'pgvector' });
+    const intersection = await recall({ query: 'pgvector', entity: 'Speculator' });
+
+    const entityOnlyIds = new Set(entityOnly.results.map((r) => r.id));
+    const queryOnlyIds = new Set(queryOnly.results.map((r) => r.id));
+    const intersectionIds = new Set(intersection.results.map((r) => r.id));
+
+    // Subset of entity-only: every intersection id appears in entity-only.
+    for (const id of intersectionIds) {
+      expect(entityOnlyIds.has(id)).toBe(true);
+    }
+    // Subset of query-only: every intersection id appears in query-only.
+    for (const id of intersectionIds) {
+      expect(queryOnlyIds.has(id)).toBe(true);
+    }
+    // Proper-subset of entity-only: m4 is in entity-only but NOT in
+    // intersection (the query keyword filter excludes it).
+    expect(entityOnlyIds.has(m4)).toBe(true);
+    expect(intersectionIds.has(m4)).toBe(false);
+    expect(intersectionIds.size).toBeLessThan(entityOnlyIds.size);
+    // Proper-subset of query-only: m3 is in query-only but NOT in
+    // intersection (the entity filter excludes it).
+    expect(queryOnlyIds.has(m3)).toBe(true);
+    expect(intersectionIds.has(m3)).toBe(false);
+    expect(intersectionIds.size).toBeLessThan(queryOnlyIds.size);
+    // Sanity: intersection contains exactly the memories both filters keep.
+    expect(intersectionIds.has(m1)).toBe(true);
+    expect(intersectionIds.has(m2)).toBe(true);
+  });
+
   it('AC4: recall() with no entity param has response shape identical to SPEC-037 (no entity fields)', async () => {
     await seed3MemoriesWithSpeculator();
     const res = await recall({ query: 'memory' });

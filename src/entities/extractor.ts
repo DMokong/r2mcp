@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import type { LLMProvider } from '../providers/types.js';
+import { withLLMCallSpan } from '../telemetry.js';
 import { buildExtractionPrompt, parseExtractionResponse } from './prompt.js';
 import {
   findCandidateMemories,
@@ -87,7 +88,14 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
 
     let rawResponse: string;
     try {
-      const result = await opts.provider.complete({ prompt, model: 'haiku' });
+      // claw-1ejd: wrap the LLM call in a child span so the parent context
+      // restored from OTEL_TRACEPARENT (set by the MCP wrapper) has a
+      // concrete operation to inherit. No-op when SDK is not initialized.
+      const result = await withLLMCallSpan(
+        'memory.extract_entities.call',
+        { provider: opts.provider.name, model: 'haiku' },
+        () => opts.provider.complete({ prompt, model: 'haiku' }),
+      );
       total_cost_usd += result.cost_usd;
       rawResponse = result.response;
     } catch (e) {
@@ -144,13 +152,7 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
       if (up.created) entities_created++;
       else entities_updated++;
       // Alias merge happens inside upsertEntity's ON CONFLICT clause (see db.ts).
-      const link = await linkMemoryToEntity(
-        opts.client,
-        mem.id,
-        up.id,
-        n.confidence,
-        'classifier',
-      );
+      const link = await linkMemoryToEntity(opts.client, mem.id, up.id, n.confidence, 'classifier');
       if (link.inserted) links_created++;
     }
 

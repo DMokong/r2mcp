@@ -15,6 +15,7 @@
 
 import { memoriesForTopic } from './clustering.js';
 import { topicSectionUserPrompt, topicSystemPrompt } from './prompts.js';
+import { withLLMCallSpan } from '../telemetry.js';
 import type { CompileSectionResult, CompileTopicInput, MemoryForCompile } from './types.js';
 
 const SECTION_NAMES = ['Summary', 'Key Decisions', 'Open Questions'] as const;
@@ -55,12 +56,18 @@ export async function compileTopic(input: CompileTopicInput): Promise<CompileSec
     }
     const heading = `## ${section}`;
     headers.push(heading);
-    const result = await provider.complete({
-      model: 'haiku',
-      system: topicSystemPrompt(),
-      prompt: topicSectionUserPrompt(topic, section, relevant),
-      max_tokens: MAX_TOKENS_PER_SECTION,
-    });
+    // claw-1ejd: wrap LLM call for cross-process trace inheritance.
+    const result = await withLLMCallSpan(
+      'memory.compile_wiki.call',
+      { provider: provider.name, model: 'haiku' },
+      () =>
+        provider.complete({
+          model: 'haiku',
+          system: topicSystemPrompt(),
+          prompt: topicSectionUserPrompt(topic, section, relevant),
+          max_tokens: MAX_TOKENS_PER_SECTION,
+        }),
+    );
     costMeter.totalCostUsd += result.cost_usd;
     sectionCost += result.cost_usd;
     lines.push(heading, '');
@@ -103,7 +110,7 @@ export async function compileTopic(input: CompileTopicInput): Promise<CompileSec
 }
 
 function sectionMemoryIds(
-  section: typeof SECTION_NAMES[number],
+  section: (typeof SECTION_NAMES)[number],
   memories: MemoryForCompile[],
 ): string[] {
   // For now, every section cites the same set of source memories (the entire
