@@ -1,0 +1,14 @@
+{
+  "memories": [
+    {"content": "Speculator v2.8 shipped yesterday.",            "expected_entities": [{"type":"project","canonical_name":"Speculator"}]},
+    {"content": "Discussed claw-1234 with Dustin.",              "expected_entities": [{"type":"person","canonical_name":"Dustin"}]},
+    {"content": "Migrated to pgvector for embeddings.",          "expected_entities": [{"type":"tool","canonical_name":"pgvector"}]},
+    {"content": "Decision: drop Docker, use Supabase free tier.","expected_entities": [{"type":"decision","canonical_name":"Use Supabase free tier"}]},
+    {"content": "OB1 has a thought_edges table similar to ours.","expected_entities": [{"type":"project","canonical_name":"OB1"}]},
+    {"content": "A purely contextual note with no entities.",    "expected_entities": []},
+    {"content": "Speculator and pgvector compose well.",         "expected_entities": [{"type":"project","canonical_name":"Speculator"},{"type":"tool","canonical_name":"pgvector"}]},
+    {"content": "Cindy refused to use the kebab-case slug.",     "expected_entities": [{"type":"person","canonical_name":"Cindy"}]},
+    {"content": "Edge classifier ran on 2000 memories.",         "expected_entities": []},
+    {"content": "OpenRouter is the embedding provider.",         "expected_entities": [{"type":"tool","canonical_name":"OpenRouter"}]}
+  ]
+}

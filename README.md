@@ -188,6 +188,8 @@ Production consumers do not need it.
 | `classify` | Classify candidate memory pairs into typed edges (supports, contradicts, supersedes, evolved_into, depends_on, related_to). Subprocess-spawned (SPEC-044 invariant). |
 | `dump_edges_sidecar` | In-process JSON dump of memory_edges + memories to a caller-supplied directory. Used by downstream consumers like Memory Explorer. |
 | `lint` | Surface structural feedback: contradictions, stale, orphans, drift, superseded_unflagged (SPEC-044, see below) |
+| `extract_entities` | Extract structured entities (project / person / tool / decision) from memories. Spawns the entity extractor driver via the shared `resolveCliCommand` helper. Inherits cost cap (`R2MCP_ENTITY_MAX_USD`, default $1.00) and resumability from SPEC-043. Top-N known entities (`R2MCP_ENTITY_CONTEXT_TOP_N`, default 100) seed the LLM context. (SPEC-046, see below) |
+| `recall` (extended) | Accepts an optional `entity` parameter that narrows results to memories linked to a named entity (matched by canonical name or any alias). When `entity` is set, `query` is optional. Response gains `entity_resolved: boolean`, optional `entity_id`, and per-result `entity_links[]`. (SPEC-046) |
 
 ## Recall v2 — semantic + budget-aware retrieval
 
@@ -437,3 +439,40 @@ Lower-confidence findings are returned as suggestions only, never auto-acted.
 (`meditate({mode: 'full', dry_run: false})`) returns the byte-identical
 pre-spec response shape — backward compatibility for direct callers is
 preserved.
+
+## Entity extraction (SPEC-046)
+
+Light entity extraction over the memory store — pulls structured `project` /
+`person` / `tool` / `decision` entities out of memories, persists them to two
+new tables (`entities` for canonical names + aliases, `memory_entities` for the
+M:N link to `memories`), and lets `recall()` filter on entity name or alias.
+
+The extractor is a subprocess-driven batch process — the MCP server itself
+never makes LLM calls. Provider selection follows the SPEC-044 precedence; on a
+Max plan, no API key is required.
+
+```bash
+# One-shot batch extraction over the last week, capped at $0.50
+npm run entities:extract -- --since-days=7 --max-cost=0.5
+
+# Or via MCP tool from any client
+# mcp.callTool('extract_entities', { since_days: 7, max_cost_usd: 0.5 })
+
+# Then ask for Speculator-scoped recall
+# mcp.callTool('recall', { entity: 'Speculator', query: 'compaction' })
+```
+
+### Env vars
+
+| Variable | Default | What it controls |
+|----------|---------|------------------|
+| `R2MCP_ENTITY_MAX_USD` | `1.00` | Cost cap for a single extraction run. On overrun, the run exits cleanly with `hit_cost_cap: true` (same shape as the classifier and compile caps). |
+| `R2MCP_ENTITY_CONTEXT_TOP_N` | `100` | Number of known entities seeded into the LLM context to bias toward canonical names + alias merging. |
+
+### Scoped recall
+
+When `recall()` is called with `entity` set:
+
+- `query` is optional — entity-only recall returns all memories linked to the entity (matched by canonical name or any alias).
+- The response carries `entity_resolved: boolean` and, when resolved, `entity_id`.
+- Each result carries an `entity_links[]` array describing how that memory connects to the named entity.

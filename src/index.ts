@@ -15,6 +15,7 @@ import { reject } from './tools/reject.js';
 import { meditate } from './tools/meditate.js';
 import { compile } from './tools/compile.js';
 import { classify } from './tools/classify.js';
+import { extractEntitiesTool } from './tools/extract-entities.js';
 import { dumpEdgesSidecarTool } from './tools/dump-edges-sidecar.js';
 import { lint } from './tools/lint.js';
 import { withToolSpan } from './telemetry.js';
@@ -82,7 +83,7 @@ server.tool(
   'recall',
   'Search memory using semantic similarity and full-text search. Supports progressive tier search, MMR diversity, relevance floor, and token-budget-based retrieval.',
   {
-    query: z.string(),
+    query: z.string().optional().default('').describe('Free-text query. Optional when `entity` is provided — SPEC-046 entity-only recall short-circuits without a query.'),
     top_k: z.number().optional().default(10),
     tier: z.enum(['preferences', 'project-context', 'conversations']).optional(),
     max_tokens: z.number().optional().describe('Token budget — return results until budget is exhausted'),
@@ -90,16 +91,19 @@ server.tool(
     diversity: z.number().min(0).max(1).optional().describe('MMR lambda: 1.0 = pure relevance, 0.0 = pure diversity (default: 0.7)'),
     progressive: z.boolean().optional().describe('Search tiers top-down, stopping early when high-confidence results found (default: true)'),
     confidence_threshold: z.number().optional().describe('Raw score threshold for progressive early-stop (default: 0.82)'),
+    entity: z.string().optional().describe('SPEC-046: filter results to memories linked to this entity (canonical_name or alias; case-insensitive). When set, response adds entity_resolved/entity_id and per-result entity_links.'),
   },
   async (args) => {
+    const queryStr = args.query ?? '';
     const result = await withToolSpan('recall', {
-      query_length: args.query.length,
+      query_length: queryStr.length,
       tier: args.tier || 'all',
       top_k: args.top_k,
       progressive: args.progressive ?? true,
+      entity: args.entity ?? '',
     }, async (span) => {
       const r = await recall({
-        query: args.query,
+        query: queryStr,
         top_k: args.top_k,
         tier: args.tier,
         max_tokens: args.max_tokens,
@@ -107,6 +111,7 @@ server.tool(
         diversity: args.diversity,
         progressive: args.progressive,
         confidence_threshold: args.confidence_threshold,
+        entity: args.entity,
       });
       span.setAttribute('result_count', r.total_results ?? 0);
       span.setAttribute('search_mode', r.search_mode ?? 'unknown');
@@ -279,6 +284,46 @@ server.tool(
         provider: args.provider,
       }, { cwd: PROJECT_ROOT });
       span.setAttribute('edges_written', r.edges_written);
+      span.setAttribute('total_cost_usd', r.total_cost_usd);
+      span.setAttribute('hit_cost_cap', r.hit_cost_cap);
+      return r;
+    });
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+server.tool(
+  'extract_entities',
+  'Extract structured entities (project / person / tool / decision) from memories. Spawns a subprocess driver that uses LLMProvider (Haiku-class). Inherits cost cap, resumable runs, and candidate pre-filtering from SPEC-043 patterns.',
+  {
+    since_days: z.number().int().min(0).optional().describe('Filter candidate memories to those updated in the last N days'),
+    max_cost_usd: z.number().nonnegative().optional().describe('Per-run cost cap in USD; default $1.00 from R2MCP_ENTITY_MAX_USD'),
+    provider: z.enum(['claude-code', 'anthropic', 'openrouter']).optional().describe('Force a specific provider for this run'),
+    resume: z.string().uuid().optional().describe('Resume a prior run_id; memories already terminal in that run are skipped'),
+    full: z.boolean().optional().describe('Backfill mode — process all memories regardless of recency. Mutually exclusive with since_days.'),
+    context_top_n: z.number().int().positive().optional().describe('Top-N existing entities to include in extraction context'),
+  },
+  async (args) => {
+    const result = await withToolSpan('extract_entities', {
+      since_days: args.since_days ?? 0,
+      provider: args.provider ?? 'auto',
+      full: args.full ?? false,
+    }, async (span) => {
+      const r = await extractEntitiesTool({
+        since_days: args.since_days,
+        max_cost_usd: args.max_cost_usd,
+        provider: args.provider,
+        resume: args.resume,
+        full: args.full,
+        context_top_n: args.context_top_n,
+      }, { cwd: PROJECT_ROOT });
+      span.setAttribute('memories_seen', r.memories_seen);
+      span.setAttribute('memories_extracted', r.memories_extracted);
+      span.setAttribute('entities_created', r.entities_created);
+      span.setAttribute('entities_updated', r.entities_updated);
+      span.setAttribute('links_created', r.links_created);
       span.setAttribute('total_cost_usd', r.total_cost_usd);
       span.setAttribute('hit_cost_cap', r.hit_cost_cap);
       return r;

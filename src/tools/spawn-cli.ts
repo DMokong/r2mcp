@@ -13,7 +13,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
-export type CliScriptName = 'classify-edges' | 'compile-wiki' | 'dump-edges-json';
+export type CliScriptName = 'classify-edges' | 'compile-wiki' | 'dump-edges-json' | 'extract-entities';
 
 export interface ResolvedCli {
   bin: string;

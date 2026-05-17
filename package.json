@@ -20,6 +20,7 @@
     "test:watch": "vitest",
     "setup": "tsx scripts/setup.ts",
     "edges:classify": "tsx scripts/classify-edges.ts",
+    "entities:extract": "tsx scripts/extract-entities.ts",
     "compile-wiki": "tsx scripts/compile-wiki.ts",
     "lint:memory": "tsx scripts/lint-memory.ts",
     "migrate": "tsx scripts/migrate.ts",
