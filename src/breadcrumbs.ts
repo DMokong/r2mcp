@@ -40,8 +40,18 @@ export type BreadcrumbContext =
   | { tool: 'lint'; response: LintResponse; args: LintArgs }
   | { tool: 'remember'; response: RememberResponse; args: RememberArgs }
   | { tool: 'extract_entities'; response: ExtractEntitiesResponse; args: ExtractEntitiesArgs }
-  | { tool: 'search' | 'stats' | 'meditate' | 'reject' | 'compile' | 'classify' | 'dump_edges_sidecar';
-      response: unknown; args: unknown };
+  | {
+      tool:
+        | 'search'
+        | 'stats'
+        | 'meditate'
+        | 'reject'
+        | 'compile'
+        | 'classify'
+        | 'dump_edges_sidecar';
+      response: unknown;
+      args: unknown;
+    };
 
 // Minimal structural shapes the mappers need. We do NOT re-export the full tool
 // schemas — only the fields the breadcrumb logic inspects.
@@ -114,7 +124,9 @@ export interface ExtractEntitiesArgs {
 
 export class InvalidBreadcrumbError extends Error {
   constructor(field: string, value: unknown) {
-    super(`Invalid breadcrumb: field "${field}" must be a non-empty string; got ${JSON.stringify(value)}`);
+    super(
+      `Invalid breadcrumb: field "${field}" must be a non-empty string; got ${JSON.stringify(value)}`,
+    );
     this.name = 'InvalidBreadcrumbError';
   }
 }
@@ -161,8 +173,8 @@ function mapLint(ctx: Extract<BreadcrumbContext, { tool: 'lint' }>): Breadcrumb[
     counts.set(f.topic, (counts.get(f.topic) ?? 0) + 1);
   }
   const ordered = Array.from(counts.entries()).sort((a, b) => {
-    if (b[1] !== a[1]) return b[1] - a[1];  // descending count
-    return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;  // alpha tiebreak
+    if (b[1] !== a[1]) return b[1] - a[1]; // descending count
+    return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; // alpha tiebreak
   });
   return ordered.map(([topic]) => ({
     name: 'compile',
@@ -183,11 +195,13 @@ function mapRemember(ctx: Extract<BreadcrumbContext, { tool: 'remember' }>): Bre
   const usage = tier
     ? `recall --query=${JSON.stringify(snippet)} --tier=${tier}`
     : `recall --query=${JSON.stringify(snippet)}`;
-  return [{
-    name: 'recall',
-    usage,
-    why: 'Verify the memory was indexed correctly',
-  }];
+  return [
+    {
+      name: 'recall',
+      usage,
+      why: 'Verify the memory was indexed correctly',
+    },
+  ];
 }
 function mapExtractEntities(
   ctx: Extract<BreadcrumbContext, { tool: 'extract_entities' }>,
@@ -202,25 +216,31 @@ function mapExtractEntities(
     const ca = a.confidence ?? 0;
     const cb = b.confidence ?? 0;
     if (cb !== ca) return cb - ca;
-    return a.canonical_name < b.canonical_name ? -1
-         : a.canonical_name > b.canonical_name ? 1 : 0;
+    return a.canonical_name < b.canonical_name ? -1 : a.canonical_name > b.canonical_name ? 1 : 0;
   });
   const top = ranked[0];
-  return [{
-    name: 'recall',
-    usage: `recall --entity=${top.canonical_name}`,
-    why: 'Confirm the newly extracted entity links to expected memories',
-  }];
+  return [
+    {
+      name: 'recall',
+      usage: `recall --entity=${top.canonical_name}`,
+      why: 'Confirm the newly extracted entity links to expected memories',
+    },
+  ];
 }
 
 function dispatchMapper(ctx: BreadcrumbContext): Breadcrumb[] {
   switch (ctx.tool) {
-    case 'recall': return mapRecall(ctx);
-    case 'lint': return mapLint(ctx);
-    case 'remember': return mapRemember(ctx);
-    case 'extract_entities': return mapExtractEntities(ctx);
+    case 'recall':
+      return mapRecall(ctx);
+    case 'lint':
+      return mapLint(ctx);
+    case 'remember':
+      return mapRemember(ctx);
+    case 'extract_entities':
+      return mapExtractEntities(ctx);
     // No-signal tools always return empty for Phase 5 — see R4.
-    default: return [];
+    default:
+      return [];
   }
 }
 

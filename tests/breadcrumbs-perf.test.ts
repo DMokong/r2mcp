@@ -32,7 +32,6 @@ describe('withBreadcrumbs performance (R7, AC7)', () => {
     // Allow some headroom for CI noise — budget is 1ms, fail at 1.5ms to avoid flakes.
     expect(median).toBeLessThan(1.5);
     // Log for visibility.
-    // eslint-disable-next-line no-console
     console.log(`withBreadcrumbs median: ${median.toFixed(4)}ms (over ${N} calls)`);
   });
 });
