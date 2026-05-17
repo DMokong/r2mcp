@@ -21,7 +21,9 @@ describe('SPEC-046 R9 extract_entities OTel span', () => {
     // Catches typos, accidental rename, or removed instrumentation. The
     // single-quoted string literal is the canonical shape used by every other
     // tool registration in this file (remember, recall, classify, ...).
-    expect(src).toContain("withToolSpan('extract_entities'");
+    // Regex tolerates prettier's whitespace choices (the call args may be
+    // wrapped across lines).
+    expect(src).toMatch(/withToolSpan\(\s*'extract_entities'/);
   });
 
   it('telemetry helper prefixes tool names with `memory.` — so withToolSpan("extract_entities") opens span `memory.extract_entities`', () => {

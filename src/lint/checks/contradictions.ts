@@ -15,10 +15,7 @@ import type { LintFinding } from '../types.js';
  */
 
 export interface PoolLike {
-  query<T = unknown>(
-    sql: string,
-    params?: unknown[],
-  ): Promise<{ rows: T[] }>;
+  query<T = unknown>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 }
 
 interface ContradictionRow {

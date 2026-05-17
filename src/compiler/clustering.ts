@@ -10,8 +10,8 @@
 import type { MemoryForCompile } from './types.js';
 
 export interface MemoryCluster {
-  topic: string;          // header label, deterministic
-  topic_slug: string;     // for IDs / anchors
+  topic: string; // header label, deterministic
+  topic_slug: string; // for IDs / anchors
   memories: MemoryForCompile[];
 }
 
@@ -62,7 +62,10 @@ function pickPrimaryTopic(m: MemoryForCompile): string {
 }
 
 export function topicToSlug(topic: string): string {
-  return topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return topic
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 export function topicTitle(topic: string): string {

@@ -37,7 +37,10 @@ export function emitFrontmatter(data: CompileFrontmatter): string {
  * Returns the parsed fields (only the ones we emit) and the body that follows.
  * Throws if the file does not start with frontmatter.
  */
-export function parseFrontmatter(text: string): { frontmatter: Partial<CompileFrontmatter>; body: string } {
+export function parseFrontmatter(text: string): {
+  frontmatter: Partial<CompileFrontmatter>;
+  body: string;
+} {
   if (!text.startsWith(FRONTMATTER_DELIM + '\n')) {
     throw new Error('File does not start with YAML frontmatter');
   }
@@ -119,7 +122,10 @@ export function stripForBodyComparison(text: string): string {
     if (endIdx !== -1) body = rest.slice(endIdx + ('\n' + FRONTMATTER_DELIM + '\n').length);
   }
   // Remove markdown header lines
-  body = body.split('\n').filter(l => !l.match(/^#{1,6}\s/)).join('\n');
+  body = body
+    .split('\n')
+    .filter((l) => !l.match(/^#{1,6}\s/))
+    .join('\n');
   // Remove citation tags
   body = body.replace(/<m:[a-zA-Z0-9-]+>/g, '');
   body = body.replace(/\[m:[a-zA-Z0-9-]+\]/g, '');
@@ -149,11 +155,7 @@ function levenshtein(a: string, b: string): number {
     curr[0] = i;
     for (let j = 1; j <= b.length; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      curr[j] = Math.min(
-        curr[j - 1] + 1,
-        prev[j] + 1,
-        prev[j - 1] + cost,
-      );
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
     }
     [prev, curr] = [curr, prev];
   }

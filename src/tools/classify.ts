@@ -88,11 +88,19 @@ function runSubprocess(
       fn();
     };
     const timer = setTimeout(() => {
-      try { child.kill('SIGKILL'); } catch { /* ignore */ }
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        /* ignore */
+      }
       settle(() => rejectP(new Error(`classify-edges timed out after ${timeoutMs}ms`)));
     }, timeoutMs);
-    child.stdout?.on('data', (d: Buffer | string) => { stdout += d.toString(); });
-    child.stderr?.on('data', (d: Buffer | string) => { stderr += d.toString(); });
+    child.stdout?.on('data', (d: Buffer | string) => {
+      stdout += d.toString();
+    });
+    child.stderr?.on('data', (d: Buffer | string) => {
+      stderr += d.toString();
+    });
     child.on('error', (err) => {
       clearTimeout(timer);
       settle(() => rejectP(err));
@@ -100,7 +108,9 @@ function runSubprocess(
     child.on('exit', (code) => {
       clearTimeout(timer);
       if (code !== 0) {
-        return settle(() => rejectP(new Error(`classify-edges exited ${code}: ${stderr.slice(-500)}`)));
+        return settle(() =>
+          rejectP(new Error(`classify-edges exited ${code}: ${stderr.slice(-500)}`)),
+        );
       }
       settle(() => resolveP(stdout));
     });
@@ -114,7 +124,9 @@ function parseSummary(stdout: string): ClassifySummary {
   const trimmed = stdout.trimEnd();
   const lastBrace = trimmed.lastIndexOf('}');
   if (lastBrace === -1) {
-    throw new Error(`classify-edges produced no parseable summary; output was:\n${stdout.slice(-500)}`);
+    throw new Error(
+      `classify-edges produced no parseable summary; output was:\n${stdout.slice(-500)}`,
+    );
   }
   let depth = 0;
   let start = -1;
@@ -122,18 +134,32 @@ function parseSummary(stdout: string): ClassifySummary {
   let escapeNext = false;
   for (let i = lastBrace; i >= 0; i--) {
     const c = trimmed[i];
-    if (escapeNext) { escapeNext = false; continue; }
-    if (c === '\\' && inString) { escapeNext = true; continue; }
-    if (c === '"' && !escapeNext) { inString = !inString; continue; }
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (c === '\\' && inString) {
+      escapeNext = true;
+      continue;
+    }
+    if (c === '"' && !escapeNext) {
+      inString = !inString;
+      continue;
+    }
     if (inString) continue;
     if (c === '}') depth++;
     else if (c === '{') {
       depth--;
-      if (depth === 0) { start = i; break; }
+      if (depth === 0) {
+        start = i;
+        break;
+      }
     }
   }
   if (start === -1) {
-    throw new Error(`classify-edges produced no parseable summary; output was:\n${stdout.slice(-500)}`);
+    throw new Error(
+      `classify-edges produced no parseable summary; output was:\n${stdout.slice(-500)}`,
+    );
   }
   const json = trimmed.slice(start, lastBrace + 1);
   return JSON.parse(json) as ClassifySummary;

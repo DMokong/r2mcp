@@ -28,7 +28,10 @@ export async function readManifest(compiledDir: string): Promise<CompileManifest
   }
 }
 
-export async function writeManifest(compiledDir: string, manifest: CompileManifest): Promise<string> {
+export async function writeManifest(
+  compiledDir: string,
+  manifest: CompileManifest,
+): Promise<string> {
   const p = manifestPath(compiledDir);
   await mkdir(dirname(p), { recursive: true });
   await writeFile(p, JSON.stringify(manifest, null, 2), 'utf-8');

@@ -21,9 +21,9 @@ const MODEL_IDS: Record<LogicalModel, string> = {
 // the same Anthropic list prices — operator can override via env var if
 // OpenRouter applies a markup.
 const PRICES: Record<LogicalModel, { input: number; output: number }> = {
-  haiku:  { input: 0.80,  output: 4.00  },
-  opus:   { input: 15.00, output: 75.00 },
-  sonnet: { input: 3.00,  output: 15.00 },
+  haiku: { input: 0.8, output: 4.0 },
+  opus: { input: 15.0, output: 75.0 },
+  sonnet: { input: 3.0, output: 15.0 },
 };
 
 const DEFAULT_MAX_TOKENS = 256;
@@ -75,7 +75,7 @@ export class OpenRouterProvider implements LLMProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
         'HTTP-Referer': 'https://github.com/DMokong/r2mcp',
         'X-Title': 'r2mcp-classifier',
       },
@@ -85,7 +85,7 @@ export class OpenRouterProvider implements LLMProvider {
       const errBody = await res.text();
       throw new Error(`OpenRouter ${res.status}: ${errBody.slice(0, 400)}`);
     }
-    const data = await res.json() as {
+    const data = (await res.json()) as {
       choices: Array<{ message: { content: string } }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };

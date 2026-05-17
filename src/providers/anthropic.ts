@@ -16,9 +16,9 @@ const MODEL_IDS: Record<LogicalModel, string> = {
 
 // Per-million-token list prices (USD), public list price as of 2026-05.
 const PRICES: Record<LogicalModel, { input: number; output: number }> = {
-  haiku:  { input: 0.80,  output: 4.00  },
-  opus:   { input: 15.00, output: 75.00 },
-  sonnet: { input: 3.00,  output: 15.00 },
+  haiku: { input: 0.8, output: 4.0 },
+  opus: { input: 15.0, output: 75.0 },
+  sonnet: { input: 3.0, output: 15.0 },
 };
 
 const DEFAULT_MAX_TOKENS = 256;
@@ -55,7 +55,7 @@ export class AnthropicProvider implements LLMProvider {
     });
     const text = response.content
       .filter((b): b is TextBlock => b.type === 'text')
-      .map(b => b.text)
+      .map((b) => b.text)
       .join('');
     const inputTokens = response.usage.input_tokens;
     const outputTokens = response.usage.output_tokens;

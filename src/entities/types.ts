@@ -1,5 +1,10 @@
 export type EntityType = 'project' | 'person' | 'tool' | 'decision';
-export const ENTITY_TYPES: readonly EntityType[] = ['project', 'person', 'tool', 'decision'] as const;
+export const ENTITY_TYPES: readonly EntityType[] = [
+  'project',
+  'person',
+  'tool',
+  'decision',
+] as const;
 
 export interface EntityRow {
   id: string;
@@ -19,9 +24,20 @@ export interface MemoryEntityLink {
   source: string;
 }
 
-export interface ExtractionMatched { canonical_name: string; confidence: number; }
-export interface ExtractionNewEntity { type: EntityType; canonical_name: string; aliases?: string[]; confidence: number; }
-export interface ExtractionResponse { matched: ExtractionMatched[]; new_entities: ExtractionNewEntity[]; }
+export interface ExtractionMatched {
+  canonical_name: string;
+  confidence: number;
+}
+export interface ExtractionNewEntity {
+  type: EntityType;
+  canonical_name: string;
+  aliases?: string[];
+  confidence: number;
+}
+export interface ExtractionResponse {
+  matched: ExtractionMatched[];
+  new_entities: ExtractionNewEntity[];
+}
 
 export interface RunSummary {
   run_id: string;

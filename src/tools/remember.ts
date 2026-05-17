@@ -8,7 +8,13 @@ const { toSql } = pgvector;
 
 export type Operation = 'ADD' | 'UPDATE' | 'ARCHIVE' | 'REJECTION' | 'NOOP';
 export type Tier = 'preferences' | 'project-context' | 'conversations';
-export type MemoryType = 'preference' | 'decision' | 'context' | 'relationship' | 'observation' | 'rejection';
+export type MemoryType =
+  | 'preference'
+  | 'decision'
+  | 'context'
+  | 'relationship'
+  | 'observation'
+  | 'rejection';
 
 export interface MemoryMetadata {
   type: MemoryType;
@@ -33,7 +39,10 @@ export interface RememberResult {
   message: string;
 }
 
-export async function remember(input: RememberInput, projectRoot?: string): Promise<RememberResult> {
+export async function remember(
+  input: RememberInput,
+  projectRoot?: string,
+): Promise<RememberResult> {
   const { operation, tier, content, metadata, target_id } = input;
 
   if (operation === 'NOOP') {
@@ -47,17 +56,13 @@ export async function remember(input: RememberInput, projectRoot?: string): Prom
     const type = operation === 'REJECTION' ? 'rejection' : metadata.type;
 
     // Check for dedup via fingerprint
-    const existing = await pool.query(
-      'SELECT id FROM memories WHERE fingerprint = $1',
-      [fp]
-    );
+    const existing = await pool.query('SELECT id FROM memories WHERE fingerprint = $1', [fp]);
 
     if (existing.rows.length > 0) {
       // Dedup: just update timestamp
-      await pool.query(
-        'UPDATE memories SET updated_at = NOW() WHERE id = $1',
-        [existing.rows[0].id]
-      );
+      await pool.query('UPDATE memories SET updated_at = NOW() WHERE id = $1', [
+        existing.rows[0].id,
+      ]);
       return {
         operation,
         id: existing.rows[0].id,
@@ -83,7 +88,7 @@ export async function remember(input: RememberInput, projectRoot?: string): Prom
         metadata.date || null,
         fp,
         embedding ? toSql(embedding) : null,
-      ]
+      ],
     );
 
     if (projectRoot) {
@@ -131,7 +136,7 @@ export async function remember(input: RememberInput, projectRoot?: string): Prom
         fp,
         embedding ? toSql(embedding) : null,
         target_id,
-      ]
+      ],
     );
 
     if (result.rows.length === 0) {
@@ -157,7 +162,7 @@ export async function remember(input: RememberInput, projectRoot?: string): Prom
     // Soft-archive: set type to 'archived' (preserves data for reversibility)
     const archived = await pool.query(
       "UPDATE memories SET type = 'archived', updated_at = NOW() WHERE id = $1 RETURNING id",
-      [target_id]
+      [target_id],
     );
 
     if (archived.rows.length === 0) {
@@ -182,7 +187,7 @@ export async function remember(input: RememberInput, projectRoot?: string): Prom
           metadata.date || null,
           fp,
           embedding ? toSql(embedding) : null,
-        ]
+        ],
       );
     }
 

@@ -45,10 +45,7 @@ const DRIFT_SQL = `
   LIMIT $1
 `;
 
-export async function findDrift(
-  pool: PoolLike,
-  opts: { limit: number },
-): Promise<LintFinding[]> {
+export async function findDrift(pool: PoolLike, opts: { limit: number }): Promise<LintFinding[]> {
   const rows = await pool.query<DriftRow>(DRIFT_SQL, [opts.limit]);
   return rows.rows.map((r) => ({
     check: 'drift',

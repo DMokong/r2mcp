@@ -22,7 +22,13 @@ export interface MemoryForCompile {
 export interface EdgeForCompile {
   from_memory_id: string;
   to_memory_id: string;
-  relation: 'supports' | 'contradicts' | 'supersedes' | 'evolved_into' | 'depends_on' | 'related_to';
+  relation:
+    | 'supports'
+    | 'contradicts'
+    | 'supersedes'
+    | 'evolved_into'
+    | 'depends_on'
+    | 'related_to';
   rationale: string;
   confidence: number;
 }

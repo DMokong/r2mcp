@@ -80,10 +80,18 @@ function runSubprocess(
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      try { child.kill('SIGKILL'); } catch { /* ignore */ }
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        /* ignore */
+      }
     }, timeoutMs);
-    child.stdout?.on('data', (d: Buffer | string) => { stdout += d.toString(); });
-    child.stderr?.on('data', (d: Buffer | string) => { stderr += d.toString(); });
+    child.stdout?.on('data', (d: Buffer | string) => {
+      stdout += d.toString();
+    });
+    child.stderr?.on('data', (d: Buffer | string) => {
+      stderr += d.toString();
+    });
     child.on('error', (err) => {
       clearTimeout(timer);
       rejectP(err);
@@ -108,7 +116,9 @@ function parseSummary(stdout: string): CompileSummary {
   const trimmed = stdout.trimEnd();
   const lastBrace = trimmed.lastIndexOf('}');
   if (lastBrace === -1) {
-    throw new Error(`compile-wiki produced no parseable summary; output was:\n${stdout.slice(-500)}`);
+    throw new Error(
+      `compile-wiki produced no parseable summary; output was:\n${stdout.slice(-500)}`,
+    );
   }
   // Walk back, balancing braces (ignoring those inside strings).
   let depth = 0;
@@ -117,18 +127,32 @@ function parseSummary(stdout: string): CompileSummary {
   let escapeNext = false;
   for (let i = lastBrace; i >= 0; i--) {
     const c = trimmed[i];
-    if (escapeNext) { escapeNext = false; continue; }
-    if (c === '\\' && inString) { escapeNext = true; continue; }
-    if (c === '"' && !escapeNext) { inString = !inString; continue; }
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (c === '\\' && inString) {
+      escapeNext = true;
+      continue;
+    }
+    if (c === '"' && !escapeNext) {
+      inString = !inString;
+      continue;
+    }
     if (inString) continue;
     if (c === '}') depth++;
     else if (c === '{') {
       depth--;
-      if (depth === 0) { start = i; break; }
+      if (depth === 0) {
+        start = i;
+        break;
+      }
     }
   }
   if (start === -1) {
-    throw new Error(`compile-wiki produced no parseable summary; output was:\n${stdout.slice(-500)}`);
+    throw new Error(
+      `compile-wiki produced no parseable summary; output was:\n${stdout.slice(-500)}`,
+    );
   }
   const json = trimmed.slice(start, lastBrace + 1);
   return JSON.parse(json) as CompileSummary;

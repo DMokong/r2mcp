@@ -6,12 +6,7 @@ import { dirname, join } from 'node:path';
 export interface StageRecord {
   run_id: string;
   pair_hash: string;
-  stage:
-    | 'haiku_pass'
-    | 'haiku_skip'
-    | 'opus_complete'
-    | 'cap_reached'
-    | 'rejection_skip';
+  stage: 'haiku_pass' | 'haiku_skip' | 'opus_complete' | 'cap_reached' | 'rejection_skip';
   timestamp: string;
   cost_usd?: number;
   edge_id?: string;

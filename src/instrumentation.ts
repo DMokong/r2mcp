@@ -23,17 +23,15 @@ if (otelEnabled) {
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: 'r2mcp',
       [ATTR_SERVICE_VERSION]: '0.1.0',
-      'deployment.environment': process.env.NODE_ENV === 'production' ? 'production' : 'development',
+      'deployment.environment':
+        process.env.NODE_ENV === 'production' ? 'production' : 'development',
     }),
     traceExporter: new OTLPTraceExporter(),
     metricReader: new PeriodicExportingMetricReader({
       exporter: new OTLPMetricExporter(),
       exportIntervalMillis: 60_000,
     }),
-    instrumentations: [
-      new PgInstrumentation(),
-      new HttpInstrumentation(),
-    ],
+    instrumentations: [new PgInstrumentation(), new HttpInstrumentation()],
   });
 
   sdk.start();

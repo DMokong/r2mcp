@@ -1,12 +1,24 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, closeSync, openSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  closeSync,
+  openSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { RunSummary, StateRecord } from './types.js';
 
-export interface EntityStateInit { runId: string; dataDir: string; resumeFrom?: string; }
+export interface EntityStateInit {
+  runId: string;
+  dataDir: string;
+  resumeFrom?: string;
+}
 
 const RAW_TRUNC = 2048;
 const STATE_FILE = 'entity-state.jsonl';
-const RUNS_DIR   = 'entity-state.runs';
+const RUNS_DIR = 'entity-state.runs';
 
 export class EntityState {
   readonly runId: string;
@@ -28,7 +40,11 @@ export class EntityState {
     for (const line of content.split('\n')) {
       if (!line.trim()) continue;
       let rec: StateRecord;
-      try { rec = JSON.parse(line); } catch { continue; }
+      try {
+        rec = JSON.parse(line);
+      } catch {
+        continue;
+      }
       if (rec.run_id !== resumeRunId) continue;
       if (rec.status === 'extracted' || rec.status === 'cap_reached' || rec.status === 'skipped') {
         this.terminalMemoryIds.add(rec.memory_id);
@@ -37,7 +53,9 @@ export class EntityState {
     }
   }
 
-  isMemoryTerminal(memoryId: string): boolean { return this.terminalMemoryIds.has(memoryId); }
+  isMemoryTerminal(memoryId: string): boolean {
+    return this.terminalMemoryIds.has(memoryId);
+  }
 
   /**
    * Append a terminal-status row for one memory. Flushes synchronously.
@@ -53,7 +71,12 @@ export class EntityState {
    */
   recordTerminal(memoryId: string, status: 'extracted' | 'cap_reached' | 'skipped'): void {
     this.terminalMemoryIds.add(memoryId);
-    this.appendRecord({ run_id: this.runId, memory_id: memoryId, status, timestamp: new Date().toISOString() });
+    this.appendRecord({
+      run_id: this.runId,
+      memory_id: memoryId,
+      status,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   /**
@@ -64,7 +87,9 @@ export class EntityState {
    */
   recordParseFailed(memoryId: string, raw: string): void {
     this.appendRecord({
-      run_id: this.runId, memory_id: memoryId, status: 'parse_failed',
+      run_id: this.runId,
+      memory_id: memoryId,
+      status: 'parse_failed',
       timestamp: new Date().toISOString(),
       raw: raw.length > RAW_TRUNC ? raw.slice(0, RAW_TRUNC) : raw,
     });
@@ -76,9 +101,13 @@ export class EntityState {
    * crash-recovery rationale and the batching TODO. Do not refactor to
    * async/batched writes without a covering benchmark on real backfill load.
    */
-  private appendRecord(rec: StateRecord): void { appendFileSync(this.stateFile, JSON.stringify(rec) + '\n'); }
+  private appendRecord(rec: StateRecord): void {
+    appendFileSync(this.stateFile, JSON.stringify(rec) + '\n');
+  }
 
-  close(): void { /* explicit no-op; appendFileSync flushes per call */ }
+  close(): void {
+    /* explicit no-op; appendFileSync flushes per call */
+  }
 
   writeRunSummary(summary: RunSummary): void {
     const runsDir = join(this.dataDir, RUNS_DIR);

@@ -1,0 +1,25 @@
+dist/
+node_modules/
+data/
+coverage/
+benchmarks/results/
+memory/compiled/
+*.d.ts
+*.md
+*.json
+*.yml
+*.yaml
+
+# Narrowed scope for polish PR (claw-1ejd follow-up):
+# prettier --write across the whole repo would touch ~112 files including
+# tests/, scripts/, and config files. To keep the polish PR diff reviewable,
+# we apply prettier only to src/ for now. Tests/scripts/configs can be a
+# follow-up PR — running `npm run format -- tests scripts` will normalize
+# them when we're ready to land that diff.
+tests/
+scripts/
+benchmarks/
+config/
+docker-compose.yml
+vitest.config.ts
+eslint.config.js
