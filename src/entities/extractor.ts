@@ -14,7 +14,6 @@ import {
   findCandidateMemories,
   getTopEntitiesByFrequency,
   upsertEntity,
-  mergeAliases,
   linkMemoryToEntity,
 } from './db.js';
 import { normalizeEntityName } from './normalize.js';
@@ -144,7 +143,7 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
       });
       if (up.created) entities_created++;
       else entities_updated++;
-      if (n.aliases && n.aliases.length) await mergeAliases(opts.client, up.id, n.aliases);
+      // Alias merge happens inside upsertEntity's ON CONFLICT clause (see db.ts).
       const link = await linkMemoryToEntity(
         opts.client,
         mem.id,
