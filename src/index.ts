@@ -97,9 +97,7 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('remember', result, args);
   },
 );
 
@@ -181,9 +179,7 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('recall', result, args);
   },
 );
 
@@ -222,9 +218,7 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('search', result, args);
   },
 );
 
@@ -239,9 +233,7 @@ server.tool(
       return r;
     });
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('stats', result, {});
   },
 );
 
@@ -257,9 +249,7 @@ server.tool(
       return reject({ id: args.id, reason: args.reason });
     });
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('reject', result, args);
   },
 );
 
@@ -289,9 +279,7 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('meditate', result, args);
   },
 );
 
@@ -332,9 +320,7 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('compile', result, args);
   },
 );
 
@@ -384,9 +370,7 @@ server.tool(
         return r;
       },
     );
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('classify', result, args);
   },
 );
 
@@ -457,9 +441,7 @@ server.tool(
         return r;
       },
     );
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('extract_entities', result, args);
   },
 );
 
@@ -484,9 +466,7 @@ server.tool(
         return r;
       },
     );
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('dump_edges_sidecar', result, args);
   },
 );
 
@@ -521,9 +501,7 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('lint', result, args);
   },
 );
 
