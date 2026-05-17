@@ -108,3 +108,52 @@ describe('withBreadcrumbs (R1, R5, R6)', () => {
     expect(MAX_BREADCRUMBS).toBe(3);
   });
 });
+
+describe('mapRecall (R4, AC2)', () => {
+  it('emits one lint breadcrumb per contradicted memory', () => {
+    const ctx: BreadcrumbContext = {
+      tool: 'recall',
+      response: {
+        results: [
+          { id: 'm1', content: 'a', signals: { contradictions: [{ memory_id: 'm1', reason: 'x' }] } },
+          { id: 'm2', content: 'b' },  // no contradiction
+        ],
+        total_results: 2, search_mode: 'semantic', tiers_searched: ['hot'], query: 'q',
+      },
+      args: {},
+    };
+    const result = withBreadcrumbs({}, ctx);
+    expect(result.next_tools).toHaveLength(1);
+    expect(result.next_tools[0].name).toBe('lint');
+    expect(result.next_tools[0].usage).toContain('--check=contradictions');
+    expect(result.next_tools[0].usage).toContain('--memory-id=m1');
+    expect(result.next_tools[0].why).toBeTruthy();
+  });
+
+  it('emits no breadcrumbs when no signals', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'recall',
+      response: {
+        results: [{ id: 'm1', content: 'a' }],
+        total_results: 1, search_mode: 'semantic', tiers_searched: ['hot'], query: 'q',
+      },
+      args: {},
+    });
+    expect(result.next_tools).toEqual([]);
+  });
+
+  it('dedupes when same memory_id appears in multiple result-level signals', () => {
+    const ctx: BreadcrumbContext = {
+      tool: 'recall',
+      response: {
+        results: [
+          { id: 'm1', content: 'a', signals: { contradictions: [{ memory_id: 'm1', reason: 'x' }] } },
+          { id: 'm1', content: 'a', signals: { contradictions: [{ memory_id: 'm1', reason: 'y' }] } },
+        ],
+        total_results: 2, search_mode: 'semantic', tiers_searched: ['hot'], query: 'q',
+      },
+      args: {},
+    };
+    expect(withBreadcrumbs({}, ctx).next_tools).toHaveLength(1);
+  });
+});

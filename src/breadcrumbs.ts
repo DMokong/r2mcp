@@ -135,7 +135,23 @@ export function assertBreadcrumb(b: unknown): asserts b is Breadcrumb {
 export const MAX_BREADCRUMBS = 3;
 
 // Per-tool mappers — defined in Tasks 4–7. Stubs for now so the dispatcher compiles.
-function mapRecall(_ctx: Extract<BreadcrumbContext, { tool: 'recall' }>): Breadcrumb[] { return []; }
+function mapRecall(ctx: Extract<BreadcrumbContext, { tool: 'recall' }>): Breadcrumb[] {
+  const seen = new Set<string>();
+  const breadcrumbs: Breadcrumb[] = [];
+  for (const r of ctx.response.results) {
+    const cs = r.signals?.contradictions ?? [];
+    for (const c of cs) {
+      if (seen.has(c.memory_id)) continue;
+      seen.add(c.memory_id);
+      breadcrumbs.push({
+        name: 'lint',
+        usage: `lint --check=contradictions --memory-id=${c.memory_id}`,
+        why: 'recall flagged a contradiction on this memory; lint diagnoses it',
+      });
+    }
+  }
+  return breadcrumbs;
+}
 function mapLint(_ctx: Extract<BreadcrumbContext, { tool: 'lint' }>): Breadcrumb[] { return []; }
 function mapRemember(_ctx: Extract<BreadcrumbContext, { tool: 'remember' }>): Breadcrumb[] { return []; }
 function mapExtractEntities(_ctx: Extract<BreadcrumbContext, { tool: 'extract_entities' }>): Breadcrumb[] { return []; }
