@@ -131,3 +131,33 @@ export function assertBreadcrumb(b: unknown): asserts b is Breadcrumb {
     }
   }
 }
+
+export const MAX_BREADCRUMBS = 3;
+
+// Per-tool mappers — defined in Tasks 4–7. Stubs for now so the dispatcher compiles.
+function mapRecall(_ctx: Extract<BreadcrumbContext, { tool: 'recall' }>): Breadcrumb[] { return []; }
+function mapLint(_ctx: Extract<BreadcrumbContext, { tool: 'lint' }>): Breadcrumb[] { return []; }
+function mapRemember(_ctx: Extract<BreadcrumbContext, { tool: 'remember' }>): Breadcrumb[] { return []; }
+function mapExtractEntities(_ctx: Extract<BreadcrumbContext, { tool: 'extract_entities' }>): Breadcrumb[] { return []; }
+
+function dispatchMapper(ctx: BreadcrumbContext): Breadcrumb[] {
+  switch (ctx.tool) {
+    case 'recall': return mapRecall(ctx);
+    case 'lint': return mapLint(ctx);
+    case 'remember': return mapRemember(ctx);
+    case 'extract_entities': return mapExtractEntities(ctx);
+    // No-signal tools always return empty for Phase 5 — see R4.
+    default: return [];
+  }
+}
+
+export function withBreadcrumbs<T extends object>(
+  response: T,
+  context: BreadcrumbContext,
+): T & { next_tools: Breadcrumb[] } {
+  const candidates = dispatchMapper(context);
+  // Validate each candidate before truncation — bad breadcrumbs throw at construction.
+  for (const b of candidates) assertBreadcrumb(b);
+  const next_tools = candidates.slice(0, MAX_BREADCRUMBS);
+  return { ...response, next_tools };
+}
