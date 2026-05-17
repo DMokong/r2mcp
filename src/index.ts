@@ -19,6 +19,19 @@ import { extractEntitiesTool } from './tools/extract-entities.js';
 import { dumpEdgesSidecarTool } from './tools/dump-edges-sidecar.js';
 import { lint } from './tools/lint.js';
 import { withToolSpan } from './telemetry.js';
+import { withBreadcrumbs, type ToolName, type BreadcrumbContext } from './breadcrumbs.js';
+
+export function asMcpResponse<T extends object>(
+  toolName: ToolName,
+  result: T,
+  args: unknown,
+) {
+  const ctx = { tool: toolName, response: result as never, args } as BreadcrumbContext;
+  const wrapped = withBreadcrumbs(result, ctx);
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(wrapped, null, 2) }],
+  };
+}
 
 // Load .env from project root — MCP servers don't inherit parent env vars
 const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
