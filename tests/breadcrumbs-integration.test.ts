@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { asMcpResponse } from '../src/index.js';
+import { asMcpResponse } from '../src/mcp-response.js';
 import type { ToolName } from '../src/breadcrumbs.js';
 
 const allTools: ToolName[] = [

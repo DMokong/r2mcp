@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { asMcpResponse } from '../src/index.js';
+import { asMcpResponse } from '../src/mcp-response.js';
 
 describe('asMcpResponse (R2)', () => {
   it('wraps a tool result into MCP content payload and adds next_tools', () => {
