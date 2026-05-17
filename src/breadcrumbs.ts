@@ -152,7 +152,24 @@ function mapRecall(ctx: Extract<BreadcrumbContext, { tool: 'recall' }>): Breadcr
   }
   return breadcrumbs;
 }
-function mapLint(_ctx: Extract<BreadcrumbContext, { tool: 'lint' }>): Breadcrumb[] { return []; }
+function mapLint(ctx: Extract<BreadcrumbContext, { tool: 'lint' }>): Breadcrumb[] {
+  // R6 truncation ranking: by descending contradiction count per topic; alphabetical for ties.
+  const counts = new Map<string, number>();
+  for (const f of ctx.response.findings) {
+    if (f.check !== 'contradictions') continue;
+    if (!f.topic) continue;
+    counts.set(f.topic, (counts.get(f.topic) ?? 0) + 1);
+  }
+  const ordered = Array.from(counts.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];  // descending count
+    return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;  // alpha tiebreak
+  });
+  return ordered.map(([topic]) => ({
+    name: 'compile',
+    usage: `compile --topic=${topic}`,
+    why: 'Contradictions on this topic; recompile the wiki view',
+  }));
+}
 function mapRemember(_ctx: Extract<BreadcrumbContext, { tool: 'remember' }>): Breadcrumb[] { return []; }
 function mapExtractEntities(_ctx: Extract<BreadcrumbContext, { tool: 'extract_entities' }>): Breadcrumb[] { return []; }
 

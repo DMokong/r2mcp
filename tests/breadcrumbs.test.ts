@@ -94,7 +94,7 @@ describe('withBreadcrumbs (R1, R5, R6)', () => {
     expect(a).toEqual(b);
   });
 
-  it.skip('R6: caps at MAX_BREADCRUMBS (3) — enabled after Task 5 implements mapLint', () => {
+  it('R6: caps at MAX_BREADCRUMBS (3) — enabled after Task 5 implements mapLint', () => {
     // Six contradictions across six topics → expect only 3 breadcrumbs.
     const findings = Array.from({ length: 6 }, (_, i) => ({
       check: 'contradictions', memory_id: `m${i}`, topic: `topic-${i}`,
@@ -155,5 +155,75 @@ describe('mapRecall (R4, AC2)', () => {
       args: {},
     };
     expect(withBreadcrumbs({}, ctx).next_tools).toHaveLength(1);
+  });
+});
+
+describe('mapLint (R4, AC3)', () => {
+  it('emits one compile breadcrumb per affected topic', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'lint',
+      response: {
+        findings: [
+          { check: 'contradictions', memory_id: 'm1', topic: 'auth' },
+          { check: 'contradictions', memory_id: 'm2', topic: 'billing' },
+        ],
+        total_findings: 2,
+      },
+      args: { check: 'contradictions' },
+    });
+    expect(result.next_tools).toHaveLength(2);
+    const usages = result.next_tools.map((b) => b.usage);
+    expect(usages).toContain('compile --topic=auth');
+    expect(usages).toContain('compile --topic=billing');
+  });
+
+  it('ranks topics by descending contradiction count', () => {
+    const findings = [
+      // 1 contradiction for topic 'a'
+      { check: 'contradictions', memory_id: 'm1', topic: 'a' },
+      // 3 contradictions for topic 'b'
+      { check: 'contradictions', memory_id: 'm2', topic: 'b' },
+      { check: 'contradictions', memory_id: 'm3', topic: 'b' },
+      { check: 'contradictions', memory_id: 'm4', topic: 'b' },
+      // 2 contradictions for topic 'c'
+      { check: 'contradictions', memory_id: 'm5', topic: 'c' },
+      { check: 'contradictions', memory_id: 'm6', topic: 'c' },
+    ];
+    const result = withBreadcrumbs({}, {
+      tool: 'lint',
+      response: { findings, total_findings: findings.length },
+      args: { check: 'contradictions' },
+    });
+    // Capped at 3; ranking is b (3), c (2), a (1).
+    expect(result.next_tools).toHaveLength(3);
+    expect(result.next_tools[0].usage).toBe('compile --topic=b');
+    expect(result.next_tools[1].usage).toBe('compile --topic=c');
+    expect(result.next_tools[2].usage).toBe('compile --topic=a');
+  });
+
+  it('ignores findings without topic', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'lint',
+      response: {
+        findings: [
+          { check: 'contradictions', memory_id: 'm1' },  // no topic
+        ],
+        total_findings: 1,
+      },
+      args: { check: 'contradictions' },
+    });
+    expect(result.next_tools).toEqual([]);
+  });
+
+  it('ignores non-contradiction findings', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'lint',
+      response: {
+        findings: [{ check: 'orphan-edge', memory_id: 'm1', topic: 'auth' }],
+        total_findings: 1,
+      },
+      args: { check: 'orphan-edge' },
+    });
+    expect(result.next_tools).toEqual([]);
   });
 });
