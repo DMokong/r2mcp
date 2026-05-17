@@ -13,8 +13,31 @@
  * shape, same JSON parse strategy.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
+import { trace } from '@opentelemetry/api';
 import { resolveCliCommand } from './spawn-cli.js';
 import type { RunSummary } from '../entities/types.js';
+
+/**
+ * Build a W3C `traceparent` string from the currently active span.
+ * Returns undefined when there's no active span (OTel SDK not initialized
+ * or this call is outside withToolSpan). Exported for testability.
+ *
+ * Format: `00-<trace_id:32hex>-<span_id:16hex>-<flags:2hex>` (version 00,
+ * sampled flag taken from the span's traceFlags). See
+ * https://www.w3.org/TR/trace-context/#traceparent-header.
+ *
+ * Subprocess receivers should set this on a `propagation.extract()` carrier
+ * keyed by `traceparent` (lowercase) to rebuild the context — see
+ * scripts/extract-entities.ts startup.
+ */
+export function currentTraceparent(): string | undefined {
+  const span = trace.getActiveSpan();
+  if (!span) return undefined;
+  const ctx = span.spanContext();
+  if (!ctx || !ctx.traceId || !ctx.spanId) return undefined;
+  const flags = (ctx.traceFlags & 0xff).toString(16).padStart(2, '0');
+  return `00-${ctx.traceId}-${ctx.spanId}-${flags}`;
+}
 
 export interface ExtractEntitiesInput {
   /** Filter candidate memories to those updated in the last N days. */
@@ -52,7 +75,14 @@ export async function extractEntitiesTool(
   const spawnFn = deps.spawnFn ?? spawn;
   const timeoutMs = deps.runTimeoutMs ?? 30 * 60_000;
 
-  const stdout = await runSubprocess(spawnFn, cwd, [bin, ...cliArgs, ...flags], timeoutMs);
+  const traceparent = currentTraceparent();
+  const stdout = await runSubprocess(
+    spawnFn,
+    cwd,
+    [bin, ...cliArgs, ...flags],
+    timeoutMs,
+    traceparent,
+  );
   return parseSummary(stdout);
 }
 
@@ -78,10 +108,24 @@ function runSubprocess(
   cwd: string,
   args: string[],
   timeoutMs: number,
+  traceparent?: string,
 ): Promise<string> {
   return new Promise<string>((resolveP, rejectP) => {
     const [bin, ...rest] = args;
-    const child: ChildProcess = spawnFn(bin, rest, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    // claw-2jbo finding 6: propagate the parent OTel span context to the
+    // child via the standard W3C `traceparent` env var. The script entry
+    // point reads OTEL_TRACEPARENT at startup (see scripts/extract-entities.ts)
+    // and uses `propagation.extract()` to make the child's spans children of
+    // the parent. When traceparent is undefined (no active span / SDK off),
+    // we simply inherit process.env unchanged.
+    const childEnv = traceparent
+      ? { ...process.env, OTEL_TRACEPARENT: traceparent }
+      : process.env;
+    const child: ChildProcess = spawnFn(bin, rest, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: childEnv,
+    });
     let stdout = '';
     let stderr = '';
     let settled = false;

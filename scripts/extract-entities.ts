@@ -24,6 +24,7 @@
  *   2 — invalid CLI argument combination
  */
 
+import { context, propagation, type Context } from '@opentelemetry/api';
 import { initDb, getPool, closeDb } from '../src/db.js';
 import { runExtractor } from '../src/entities/extractor.js';
 import {
@@ -32,6 +33,24 @@ import {
   ProviderUnavailableError,
   type ProviderName,
 } from '../src/providers/index.js';
+
+/**
+ * claw-2jbo finding 6: if the MCP wrapper passed an OTEL_TRACEPARENT env
+ * var (W3C traceparent format), reconstruct the parent OTel context so any
+ * spans/auto-instrumentation in this subprocess chain under the wrapper's
+ * `memory.extract_entities` span. No-op when the env var is absent or no
+ * propagator is registered (OTel SDK not initialized).
+ */
+function parentContextFromEnv(): Context | undefined {
+  const traceparent = process.env.OTEL_TRACEPARENT;
+  if (!traceparent) return undefined;
+  // Standard W3C TextMap carrier: lowercase `traceparent` (and optional
+  // `tracestate`) keys. propagation.extract is a no-op without a propagator,
+  // which is fine — the env var is still set, future SDK init will see it.
+  const carrier: Record<string, string> = { traceparent };
+  if (process.env.OTEL_TRACESTATE) carrier.tracestate = process.env.OTEL_TRACESTATE;
+  return propagation.extract(context.active(), carrier);
+}
 
 export interface CliArgs {
   sinceDays?: number;
@@ -131,16 +150,23 @@ const isDirectInvocation = (() => {
 })();
 
 if (isDirectInvocation) {
-  main().catch((err) => {
-    if (err instanceof UsageError) {
-      process.stderr.write(`${err.message}\n`);
-      process.exit(err.exitCode);
-    }
-    if (err instanceof ProviderUnavailableError) {
-      process.stderr.write(`${err.message}\n`);
-    } else {
-      process.stderr.write(`ERROR: ${err instanceof Error ? err.message : String(err)}\n`);
-    }
-    process.exit(1);
-  });
+  // Wrap main() in the extracted parent context so any future OTel spans
+  // in this process chain under the MCP wrapper's parent span (claw-2jbo
+  // finding 6). When parentCtx is undefined we just run main() directly.
+  const parentCtx = parentContextFromEnv();
+  const runner = () =>
+    main().catch((err) => {
+      if (err instanceof UsageError) {
+        process.stderr.write(`${err.message}\n`);
+        process.exit(err.exitCode);
+      }
+      if (err instanceof ProviderUnavailableError) {
+        process.stderr.write(`${err.message}\n`);
+      } else {
+        process.stderr.write(`ERROR: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
+      process.exit(1);
+    });
+  if (parentCtx) context.with(parentCtx, runner);
+  else runner();
 }

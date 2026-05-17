@@ -16,8 +16,8 @@ import {
   upsertEntity,
   mergeAliases,
   linkMemoryToEntity,
-  findEntityByInput,
 } from './db.js';
+import { normalizeEntityName } from './normalize.js';
 import { EntityState } from './state.js';
 import type { RunSummary } from './types.js';
 
@@ -45,12 +45,28 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
   let total_cost_usd = 0;
   let parse_failures = 0;
   let hit_cost_cap = false;
+  let hallucinated_matched = 0;
 
   const candidates = await findCandidateMemories(opts.client, {
     sinceDays: opts.sinceDays,
     full: opts.full,
   });
   const known = await getTopEntitiesByFrequency(opts.client, opts.contextTopN);
+
+  // claw-2jbo finding 1: build a normalized-name → entity-id map once per run
+  // so LLM-matched canonical_names resolve synchronously instead of issuing
+  // findEntityByInput() per match (N+1). The spec requires the LLM to echo a
+  // canonical_name verbatim from the known set, so the map should always hit
+  // for well-behaved LLM output. Map misses (counted via hallucinated_matched)
+  // are the hallucination signal — see finding 2.
+  //
+  // Key by normalized canonical_name AND each alias so a match-by-alias still
+  // resolves (aliases stored normalized; see db.ts upsertEntity/mergeAliases).
+  const knownById = new Map<string, string>(); // normalized lookup → entity id
+  for (const e of known) {
+    knownById.set(e.normalized_name, e.id);
+    for (const alias of e.aliases) knownById.set(alias, e.id);
+  }
 
   for (const mem of candidates) {
     memories_seen++;
@@ -86,6 +102,7 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
         total_cost_usd,
         hit_cost_cap,
         parse_failures,
+        hallucinated_matched,
         error: `provider error: ${(e as Error).message}`,
       });
     }
@@ -100,12 +117,20 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
     }
 
     for (const m of parsed.value.matched) {
-      const entity = await findEntityByInput(opts.client, m.canonical_name);
-      if (!entity) continue; // LLM hallucinated a canonical name not in known set
+      // Synchronous lookup against the in-memory map built from the known set
+      // above (claw-2jbo finding 1). A miss means the LLM returned a
+      // canonical_name not in the context we provided — i.e. a hallucination.
+      // Increment hallucinated_matched and skip the link (no DB write for a
+      // canonical we never told the model about).
+      const entityId = knownById.get(normalizeEntityName(m.canonical_name));
+      if (!entityId) {
+        hallucinated_matched++;
+        continue;
+      }
       const link = await linkMemoryToEntity(
         opts.client,
         mem.id,
-        entity.id,
+        entityId,
         m.confidence,
         'classifier',
       );
@@ -143,6 +168,7 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
     total_cost_usd,
     hit_cost_cap,
     parse_failures,
+    hallucinated_matched,
   });
 }
 
@@ -159,6 +185,7 @@ function finalize(
     total_cost_usd: number;
     hit_cost_cap: boolean;
     parse_failures: number;
+    hallucinated_matched: number;
     error?: string;
   },
 ): RunSummary {

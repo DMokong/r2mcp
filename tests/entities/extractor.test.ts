@@ -78,6 +78,54 @@ describe('SPEC-046 runExtractor', () => {
     expect(summary.entities_created).toBeGreaterThanOrEqual(7); // 7 unique expected
     expect(summary.links_created).toBeGreaterThanOrEqual(8); // includes the dual-entity memory
     expect(summary.hit_cost_cap).toBe(false);
+    // claw-2jbo finding 2: shape includes hallucinated_matched; zero on happy path.
+    expect(summary.hallucinated_matched).toBe(0);
+  });
+
+  it('claw-2jbo finding 1 + 2: matched against known set resolves via in-memory map; unknown canonical_names count as hallucinations', async () => {
+    // Seed corpus + an existing entity the LLM can legitimately match against.
+    await seedCorpus();
+    const { rows: [knownRow] } = await pool.query(
+      `INSERT INTO entities (type, canonical_name, normalized_name, aliases)
+       VALUES ('project', 'Speculator', 'speculator', ARRAY['spec']::text[])
+       RETURNING id`,
+    );
+    // Touch one memory so the candidate pool re-includes existing-linked memories.
+    await pool.query("UPDATE memories SET updated_at = NOW() + INTERVAL '1 minute'");
+
+    // Each response: one matched against the known entity ("Speculator"),
+    // and one matched against a hallucinated canonical_name ("Phantom").
+    const responses = corpus.memories.map(() =>
+      JSON.stringify({
+        matched: [
+          { canonical_name: 'Speculator', confidence: 0.9 },
+          { canonical_name: 'Phantom', confidence: 0.8 },
+        ],
+        new_entities: [],
+      }),
+    );
+
+    const summary = await runExtractor({
+      client: pool,
+      provider: mockProvider(responses),
+      dataDir,
+      maxCostUsd: 1.0,
+      contextTopN: 100,
+    });
+
+    // One hallucination per memory → matches corpus length.
+    expect(summary.hallucinated_matched).toBe(corpus.memories.length);
+    // No "Phantom" entity ever inserted (hallucinations are silently dropped).
+    const { rows: phantomRows } = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM entities WHERE canonical_name = 'Phantom'",
+    );
+    expect(phantomRows[0].n).toBe(0);
+    // The known-entity link succeeded once per memory.
+    const { rows: linkRows } = await pool.query(
+      'SELECT COUNT(*)::int AS n FROM memory_entities WHERE entity_id = $1',
+      [knownRow.id],
+    );
+    expect(linkRows[0].n).toBe(corpus.memories.length);
   });
 
   it('AC5: cost cap exits cleanly with hit_cost_cap=true', async () => {

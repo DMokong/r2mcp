@@ -30,10 +30,17 @@ export async function upsertEntity(
     .map((a) => normalizeEntityName(a))
     .filter((a) => a.length > 0);
 
+  // ON CONFLICT also merges aliases (claw-2jbo, PR #1 finding 3). Prior shape
+  // dropped EXCLUDED.aliases silently, requiring callers to invoke
+  // mergeAliases() separately. Direct consumers of upsertEntity now get the
+  // union-merge for free. ARRAY(SELECT DISTINCT UNNEST(...)) is the same
+  // union shape used by mergeAliases below.
   const { rows } = await client.query(
     `INSERT INTO entities (type, canonical_name, normalized_name, aliases)
      VALUES ($1, $2, $3, $4::text[])
-     ON CONFLICT (type, normalized_name) DO UPDATE SET last_seen_at = NOW()
+     ON CONFLICT (type, normalized_name) DO UPDATE SET
+       aliases = ARRAY(SELECT DISTINCT UNNEST(entities.aliases || EXCLUDED.aliases)),
+       last_seen_at = NOW()
      RETURNING id, (xmax = 0) AS created`,
     [input.type, input.canonical_name, normalized, aliases],
   );
@@ -100,14 +107,21 @@ export async function getTopEntitiesByFrequency(
   n: number,
 ): Promise<
   Array<{
+    id: string;
     type: EntityType;
     canonical_name: string;
+    normalized_name: string;
     aliases: string[];
     link_count: number;
   }>
 > {
+  // Returns id + normalized_name (additive vs. prior shape) so callers can
+  // build an in-memory lookup keyed by normalized canonical AND alias, used
+  // by the extractor to resolve LLM-matched canonical_names without a DB
+  // round-trip per match (claw-2jbo finding 1).
   const { rows } = await client.query(
-    `SELECT e.type, e.canonical_name, e.aliases, COUNT(me.memory_id)::int AS link_count
+    `SELECT e.id, e.type, e.canonical_name, e.normalized_name, e.aliases,
+            COUNT(me.memory_id)::int AS link_count
      FROM entities e
      LEFT JOIN memory_entities me ON me.entity_id = e.id
      GROUP BY e.id
@@ -170,8 +184,11 @@ export async function getEntityLinksForMemories(
   >
 > {
   if (memoryIds.length === 0) return new Map();
+  // Cast confidence::float — schema is NUMERIC(3,2) to match memory_edges
+  // (SPEC-043), but pg returns NUMERIC as a JS string by default. Callers
+  // (recall's EntityLink) type this as number, so cast at the query.
   const { rows } = await client.query(
-    `SELECT me.memory_id, e.type, e.canonical_name, me.confidence
+    `SELECT me.memory_id, e.type, e.canonical_name, me.confidence::float AS confidence
      FROM memory_entities me
      JOIN entities e ON e.id = me.entity_id
      WHERE me.memory_id = ANY($1::uuid[])`,

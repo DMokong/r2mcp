@@ -36,6 +36,15 @@ export interface RunSummary {
   hit_cost_cap: boolean;
   error?: string;
   parse_failures?: number;
+  /**
+   * Count of `matched` entries returned by the LLM whose canonical_name did
+   * not appear in the known-entities context. The spec requires the LLM to
+   * echo a canonical_name verbatim from the known set; a miss here is an
+   * LLM hallucination. These are silently dropped (no DB write), but the
+   * count is surfaced so observability can alarm if it climbs. Added in
+   * claw-2jbo (PR #1 finding 2).
+   */
+  hallucinated_matched: number;
 }
 
 export interface StateRecord {

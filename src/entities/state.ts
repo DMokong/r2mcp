@@ -39,11 +39,29 @@ export class EntityState {
 
   isMemoryTerminal(memoryId: string): boolean { return this.terminalMemoryIds.has(memoryId); }
 
+  /**
+   * Append a terminal-status row for one memory. Flushes synchronously.
+   *
+   * Per-record sync flush (see appendRecord) is intentional: it guarantees
+   * a crash mid-run can be resumed exactly. At current corpus scale (~100
+   * memories per run) the syscall overhead is negligible — the LLM call
+   * dominates the loop.
+   *
+   * TODO(perf, claw-2jbo finding 5): batch flushes (every N records or
+   * every M seconds) when the corpus exceeds ~1000 memories. Until then,
+   * durability beats batching.
+   */
   recordTerminal(memoryId: string, status: 'extracted' | 'cap_reached' | 'skipped'): void {
     this.terminalMemoryIds.add(memoryId);
     this.appendRecord({ run_id: this.runId, memory_id: memoryId, status, timestamp: new Date().toISOString() });
   }
 
+  /**
+   * Append a parse_failed row (non-terminal — resume will retry).
+   *
+   * Same per-record sync flush as recordTerminal; same durability rationale.
+   * See TODO(perf, claw-2jbo finding 5) on recordTerminal.
+   */
   recordParseFailed(memoryId: string, raw: string): void {
     this.appendRecord({
       run_id: this.runId, memory_id: memoryId, status: 'parse_failed',
@@ -52,6 +70,12 @@ export class EntityState {
     });
   }
 
+  /**
+   * Sync-append a state record to the JSONL state file. Per-record flush
+   * is durability-first by design — see recordTerminal doc-comment for the
+   * crash-recovery rationale and the batching TODO. Do not refactor to
+   * async/batched writes without a covering benchmark on real backfill load.
+   */
   private appendRecord(rec: StateRecord): void { appendFileSync(this.stateFile, JSON.stringify(rec) + '\n'); }
 
   close(): void { /* explicit no-op; appendFileSync flushes per call */ }

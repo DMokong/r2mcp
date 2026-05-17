@@ -59,6 +59,7 @@ describe('SPEC-046 R5 EntityState (cost cap + resume)', () => {
       memories_seen: 5, memories_extracted: 5,
       entities_created: 3, entities_updated: 1, links_created: 7,
       total_cost_usd: 0.12, hit_cost_cap: false,
+      hallucinated_matched: 0,
     });
     const path = join(dataDir, 'entity-state.runs', 'run-xyz.json');
     expect(existsSync(path)).toBe(true);

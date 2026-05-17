@@ -99,12 +99,16 @@ CREATE INDEX IF NOT EXISTS idx_entities_normalized ON entities (normalized_name)
 CREATE INDEX IF NOT EXISTS idx_entities_aliases    ON entities USING gin (aliases);
 CREATE INDEX IF NOT EXISTS idx_entities_type       ON entities (type);
 
+-- Note: memory_entities.confidence is NUMERIC(3,2) to match memory_edges.confidence
+-- from SPEC-043 (already shipped). The SPEC-046 PR review (claw-2jbo) flagged the
+-- prior REAL type as a cross-table inconsistency. Aligning here is safe because
+-- memory_entities ships for the first time in this PR — no shipped consumers.
 CREATE TABLE IF NOT EXISTS memory_entities (
-  memory_id   UUID   NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-  entity_id   UUID   NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-  confidence  REAL   NOT NULL DEFAULT 1.0 CHECK (confidence BETWEEN 0 AND 1),
-  source      TEXT   NOT NULL DEFAULT 'classifier',
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  memory_id   UUID         NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  entity_id   UUID         NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  confidence  NUMERIC(3,2) NOT NULL DEFAULT 1.0 CHECK (confidence BETWEEN 0 AND 1),
+  source      TEXT         NOT NULL DEFAULT 'classifier',
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   PRIMARY KEY (memory_id, entity_id)
 );
 

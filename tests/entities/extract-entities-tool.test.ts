@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { trace, type Span, type SpanContext, TraceFlags } from '@opentelemetry/api';
 import { extractEntitiesTool } from '../../src/tools/extract-entities.js';
 import type { RunSummary } from '../../src/entities/types.js';
 
@@ -44,6 +45,7 @@ function mockRunSummary(): RunSummary {
     total_cost_usd: 0.07,
     hit_cost_cap: false,
     parse_failures: 0,
+    hallucinated_matched: 0,
   };
 }
 
@@ -77,6 +79,58 @@ describe('extract_entities MCP tool — subprocess delegation', () => {
     ) as unknown as typeof import('node:child_process').spawn;
 
     await expect(extractEntitiesTool({}, { spawnFn })).rejects.toThrow(/exited 2/);
+  });
+
+  it('claw-2jbo finding 6: propagates parent span context to subprocess via OTEL_TRACEPARENT', async () => {
+    // Without an OTel SDK registered the NoopContextManager makes context.with()
+    // a passthrough — so we can't make a span "active" the normal way. Mock
+    // trace.getActiveSpan() directly to return a span with known IDs and assert
+    // the tool encodes them into OTEL_TRACEPARENT on the spawn env.
+    const traceId = '4bf92f3577b34da6a3ce929d0e0e4736';
+    const spanId = '00f067aa0ba902b7';
+    const fakeSpanContext: SpanContext = {
+      traceId,
+      spanId,
+      traceFlags: TraceFlags.SAMPLED,
+    };
+    const fakeSpan = {
+      spanContext: () => fakeSpanContext,
+    } as unknown as Span;
+
+    const spy = vi.spyOn(trace, 'getActiveSpan').mockReturnValue(fakeSpan);
+
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    const spawnFn = vi.fn((_bin: string, _args: string[], opts: { env?: NodeJS.ProcessEnv }) => {
+      capturedEnv = opts.env;
+      return fakeSpawn(JSON.stringify(mockRunSummary()) + '\n', 0);
+    }) as unknown as typeof import('node:child_process').spawn;
+
+    try {
+      await extractEntitiesTool({}, { spawnFn });
+      expect(capturedEnv?.OTEL_TRACEPARENT).toBe(`00-${traceId}-${spanId}-01`);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('claw-2jbo finding 6: no OTEL_TRACEPARENT when there is no active span', async () => {
+    // When called outside an active span (no withToolSpan, no SDK), the env
+    // var must NOT be set — we should fall back to inheriting process.env.
+    // Preserve and restore any test-env OTEL_TRACEPARENT to avoid leakage.
+    const prior = process.env.OTEL_TRACEPARENT;
+    delete process.env.OTEL_TRACEPARENT;
+    try {
+      let capturedEnv: NodeJS.ProcessEnv | undefined;
+      const spawnFn = vi.fn((_bin: string, _args: string[], opts: { env?: NodeJS.ProcessEnv }) => {
+        capturedEnv = opts.env;
+        return fakeSpawn(JSON.stringify(mockRunSummary()) + '\n', 0);
+      }) as unknown as typeof import('node:child_process').spawn;
+
+      await extractEntitiesTool({}, { spawnFn });
+      expect(capturedEnv?.OTEL_TRACEPARENT).toBeUndefined();
+    } finally {
+      if (prior !== undefined) process.env.OTEL_TRACEPARENT = prior;
+    }
   });
 
   it('SIGKILLs the child and rejects on timeout', async () => {

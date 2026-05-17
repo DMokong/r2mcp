@@ -51,6 +51,32 @@ describe('SPEC-046 entities DB layer', () => {
     expect(e2.created).toBe(false);
   });
 
+  it('claw-2jbo finding 3: upsertEntity ON CONFLICT merges aliases (no longer drops EXCLUDED.aliases)', async () => {
+    // First call: seed with one alias.
+    const first = await upsertEntity(pool, {
+      type: 'project',
+      canonical_name: 'Speculator',
+      aliases: ['existing'],
+    });
+    expect(first.created).toBe(true);
+
+    // Second call: same canonical, different alias. The conflict branch must
+    // merge aliases — prior behavior dropped EXCLUDED.aliases silently.
+    const second = await upsertEntity(pool, {
+      type: 'project',
+      canonical_name: 'Speculator',
+      aliases: ['new'],
+    });
+    expect(second.created).toBe(false);
+    expect(second.id).toBe(first.id);
+
+    const { rows } = await pool.query(
+      'SELECT aliases FROM entities WHERE id = $1',
+      [first.id],
+    );
+    expect((rows[0].aliases as string[]).sort()).toEqual(['existing', 'new']);
+  });
+
   it('findEntityByInput resolves canonical name AND alias case-insensitively (AC3)', async () => {
     await upsertEntity(pool, {
       type: 'project',
