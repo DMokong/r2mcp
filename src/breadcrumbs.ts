@@ -111,3 +111,23 @@ export interface ExtractEntitiesArgs {
   since_days?: number;
   full?: boolean;
 }
+
+export class InvalidBreadcrumbError extends Error {
+  constructor(field: string, value: unknown) {
+    super(`Invalid breadcrumb: field "${field}" must be a non-empty string; got ${JSON.stringify(value)}`);
+    this.name = 'InvalidBreadcrumbError';
+  }
+}
+
+export function assertBreadcrumb(b: unknown): asserts b is Breadcrumb {
+  if (!b || typeof b !== 'object') {
+    throw new InvalidBreadcrumbError('breadcrumb', b);
+  }
+  const obj = b as Record<string, unknown>;
+  for (const field of ['name', 'usage', 'why'] as const) {
+    const v = obj[field];
+    if (typeof v !== 'string' || v.length === 0) {
+      throw new InvalidBreadcrumbError(field, v);
+    }
+  }
+}
