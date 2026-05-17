@@ -227,3 +227,73 @@ describe('mapLint (R4, AC3)', () => {
     expect(result.next_tools).toEqual([]);
   });
 });
+
+describe('mapExtractEntities (R4, Open Question 3 resolution)', () => {
+  it('emits no breadcrumbs when entities_created is 0', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'extract_entities',
+      response: { entities_created: 0, entities_updated: 5, new_entities: [] },
+      args: {},
+    });
+    expect(result.next_tools).toEqual([]);
+  });
+
+  it('picks highest-confidence new entity for the recall breadcrumb', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'extract_entities',
+      response: {
+        entities_created: 3, entities_updated: 0,
+        new_entities: [
+          { canonical_name: 'OB1', type: 'project', confidence: 0.7 },
+          { canonical_name: 'Speculator', type: 'project', confidence: 0.95 },
+          { canonical_name: 'r2mcp', type: 'project', confidence: 0.8 },
+        ],
+      },
+      args: {},
+    });
+    expect(result.next_tools).toHaveLength(1);
+    expect(result.next_tools[0].name).toBe('recall');
+    expect(result.next_tools[0].usage).toBe('recall --entity=Speculator');
+    expect(result.next_tools[0].why).toContain('newly extracted entity');
+  });
+
+  it('breaks confidence ties alphabetically by canonical_name (ascending)', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'extract_entities',
+      response: {
+        entities_created: 2, entities_updated: 0,
+        new_entities: [
+          { canonical_name: 'Zeta', type: 'project', confidence: 0.9 },
+          { canonical_name: 'Alpha', type: 'project', confidence: 0.9 },
+        ],
+      },
+      args: {},
+    });
+    expect(result.next_tools[0].usage).toBe('recall --entity=Alpha');
+  });
+
+  it('treats missing confidence as 0 for ranking', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'extract_entities',
+      response: {
+        entities_created: 2, entities_updated: 0,
+        new_entities: [
+          { canonical_name: 'NoConf', type: 'project' },
+          { canonical_name: 'HasConf', type: 'project', confidence: 0.1 },
+        ],
+      },
+      args: {},
+    });
+    expect(result.next_tools[0].usage).toBe('recall --entity=HasConf');
+  });
+
+  it('emits no breadcrumb when new_entities is empty despite entities_created > 0', () => {
+    // Defensive: should not happen in practice but the response is what we have.
+    const result = withBreadcrumbs({}, {
+      tool: 'extract_entities',
+      response: { entities_created: 3, entities_updated: 0, new_entities: [] },
+      args: {},
+    });
+    expect(result.next_tools).toEqual([]);
+  });
+});

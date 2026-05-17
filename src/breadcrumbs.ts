@@ -171,7 +171,29 @@ function mapLint(ctx: Extract<BreadcrumbContext, { tool: 'lint' }>): Breadcrumb[
   }));
 }
 function mapRemember(_ctx: Extract<BreadcrumbContext, { tool: 'remember' }>): Breadcrumb[] { return []; }
-function mapExtractEntities(_ctx: Extract<BreadcrumbContext, { tool: 'extract_entities' }>): Breadcrumb[] { return []; }
+function mapExtractEntities(
+  ctx: Extract<BreadcrumbContext, { tool: 'extract_entities' }>,
+): Breadcrumb[] {
+  // R4 trigger: entities_created > 0
+  if ((ctx.response.entities_created ?? 0) <= 0) return [];
+  const entities = ctx.response.new_entities ?? [];
+  if (entities.length === 0) return [];
+
+  // Open Question 3 resolution: pick by highest confidence; alphabetical tiebreak.
+  const ranked = [...entities].sort((a, b) => {
+    const ca = a.confidence ?? 0;
+    const cb = b.confidence ?? 0;
+    if (cb !== ca) return cb - ca;
+    return a.canonical_name < b.canonical_name ? -1
+         : a.canonical_name > b.canonical_name ? 1 : 0;
+  });
+  const top = ranked[0];
+  return [{
+    name: 'recall',
+    usage: `recall --entity=${top.canonical_name}`,
+    why: 'Confirm the newly extracted entity links to expected memories',
+  }];
+}
 
 function dispatchMapper(ctx: BreadcrumbContext): Breadcrumb[] {
   switch (ctx.tool) {
