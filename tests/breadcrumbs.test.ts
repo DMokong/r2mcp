@@ -297,3 +297,56 @@ describe('mapExtractEntities (R4, Open Question 3 resolution)', () => {
     expect(result.next_tools).toEqual([]);
   });
 });
+
+describe('mapRemember (R4)', () => {
+  it('emits one recall breadcrumb when memory_id is present', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'remember',
+      response: { operation: 'ADD', memory_id: 'mem-abc' },
+      args: { tier: 'hot', content: 'Decided to use X over Y because Z' },
+    });
+    expect(result.next_tools).toHaveLength(1);
+    expect(result.next_tools[0].name).toBe('recall');
+    expect(result.next_tools[0].usage).toContain('--tier=hot');
+    expect(result.next_tools[0].usage).toContain('--query=');
+    expect(result.next_tools[0].why).toContain('indexed');
+  });
+
+  it('uses id field as fallback when memory_id missing (older shape compat)', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'remember',
+      response: { operation: 'ADD', id: 'mem-xyz' },
+      args: { content: 'short' },
+    });
+    expect(result.next_tools).toHaveLength(1);
+  });
+
+  it('emits no breadcrumb when neither id nor memory_id present (NOOP, ARCHIVE-no-target etc.)', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'remember',
+      response: { operation: 'NOOP', message: 'no change' },
+      args: { content: 'x' },
+    });
+    expect(result.next_tools).toEqual([]);
+  });
+
+  it('truncates the query snippet to a reasonable length', () => {
+    const longContent = 'a'.repeat(500);
+    const result = withBreadcrumbs({}, {
+      tool: 'remember',
+      response: { operation: 'ADD', memory_id: 'mem1' },
+      args: { tier: 'hot', content: longContent },
+    });
+    // Query should be capped (e.g., first 80 chars) — keep usage strings runnable.
+    expect(result.next_tools[0].usage.length).toBeLessThan(200);
+  });
+
+  it('omits --tier when tier arg not provided', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'remember',
+      response: { operation: 'ADD', memory_id: 'mem1' },
+      args: { content: 'x' },
+    });
+    expect(result.next_tools[0].usage).not.toContain('--tier=');
+  });
+});

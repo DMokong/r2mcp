@@ -170,7 +170,25 @@ function mapLint(ctx: Extract<BreadcrumbContext, { tool: 'lint' }>): Breadcrumb[
     why: 'Contradictions on this topic; recompile the wiki view',
   }));
 }
-function mapRemember(_ctx: Extract<BreadcrumbContext, { tool: 'remember' }>): Breadcrumb[] { return []; }
+const QUERY_SNIPPET_MAX = 80;
+
+function mapRemember(ctx: Extract<BreadcrumbContext, { tool: 'remember' }>): Breadcrumb[] {
+  const memId = ctx.response.memory_id ?? ctx.response.id;
+  if (!memId) return [];
+  const content = (ctx.args as RememberArgs).content ?? '';
+  if (!content.trim()) return [];
+
+  const snippet = content.slice(0, QUERY_SNIPPET_MAX).replace(/\s+/g, ' ').trim();
+  const tier = (ctx.args as RememberArgs).tier;
+  const usage = tier
+    ? `recall --query=${JSON.stringify(snippet)} --tier=${tier}`
+    : `recall --query=${JSON.stringify(snippet)}`;
+  return [{
+    name: 'recall',
+    usage,
+    why: 'Verify the memory was indexed correctly',
+  }];
+}
 function mapExtractEntities(
   ctx: Extract<BreadcrumbContext, { tool: 'extract_entities' }>,
 ): Breadcrumb[] {
