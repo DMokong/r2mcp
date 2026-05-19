@@ -26,6 +26,7 @@ describe('contradictions check (C.AC1, C.AC6)', () => {
       {
         from_id: 'A', to_id: 'B', confidence: 0.8, rationale: 'A says X, B says not-X',
         from_created_at: '2026-05-01', to_created_at: '2026-04-01',
+        from_topics: ['auth', 'session'],
       },
     ]);
     const findings = await findContradictions(pool, { limit: 100 });
@@ -35,6 +36,7 @@ describe('contradictions check (C.AC1, C.AC6)', () => {
       memory_id: 'A',
       related_memory_id: 'B',
       confidence: 0.8,
+      topic: 'auth',
     });
   });
 
@@ -43,6 +45,7 @@ describe('contradictions check (C.AC1, C.AC6)', () => {
       {
         from_id: 'newer', to_id: 'older', confidence: 0.85, rationale: 'r',
         from_created_at: '2026-05-03', to_created_at: '2026-04-01',
+        from_topics: null,
       },
     ]);
     const [f] = await findContradictions(pool, { limit: 100 });
@@ -54,6 +57,7 @@ describe('contradictions check (C.AC1, C.AC6)', () => {
       {
         from_id: 'A', to_id: 'B', confidence: 0.9, rationale: 'r',
         from_created_at: '2026-05-01', to_created_at: '2026-05-01',
+        from_topics: ['billing'],
       },
     ]);
     const [f] = await findContradictions(pool, { limit: 100 });
@@ -65,18 +69,47 @@ describe('contradictions check (C.AC1, C.AC6)', () => {
       {
         from_id: 'A', to_id: 'B', confidence: 0.5, rationale: 'r',
         from_created_at: '2026-05-01', to_created_at: '2026-05-01',
+        from_topics: [],
       },
     ]);
     const [f] = await findContradictions(pool, { limit: 100 });
     expect(f.suggested_action).toBe('human_review');
   });
 
+  it('topic is undefined when memory has no topics (empty array or null)', async () => {
+    const pool = mockPool([
+      {
+        from_id: 'A', to_id: 'B', confidence: 0.6, rationale: 'r',
+        from_created_at: '2026-05-01', to_created_at: '2026-05-01',
+        from_topics: [],
+      },
+      {
+        from_id: 'C', to_id: 'D', confidence: 0.6, rationale: 'r',
+        from_created_at: '2026-05-01', to_created_at: '2026-05-01',
+        from_topics: null,
+      },
+    ]);
+    const findings = await findContradictions(pool, { limit: 100 });
+    expect(findings[0].topic).toBeUndefined();
+    expect(findings[1].topic).toBeUndefined();
+  });
+
+  it('passes memoryId filter into the SQL params when supplied', async () => {
+    const queryFn = vi.fn(async () => ({ rows: [] as never }));
+    const pool: PoolLike = { query: queryFn };
+    await findContradictions(pool, { limit: 50, memoryId: 'mem-target' });
+    const [sql, params] = queryFn.mock.calls[0];
+    expect(sql).toContain('e.from_memory_id = $1');
+    expect(sql).toContain('e.to_memory_id = $1');
+    expect(params).toEqual(['mem-target', 50]);
+  });
+
   it('only emits suggested_action values from the documented vocabulary (C.AC6)', async () => {
     const VALID = new Set(['archive_one', 'add_supersedes_edge', 'human_review']);
     const pool = mockPool([
-      { from_id: 'A', to_id: 'B', confidence: 0.95, rationale: 'r', from_created_at: '2026-05-03', to_created_at: '2026-05-01' },
-      { from_id: 'C', to_id: 'D', confidence: 0.6,  rationale: 'r', from_created_at: '2026-05-01', to_created_at: '2026-05-01' },
-      { from_id: 'E', to_id: 'F', confidence: 0.92, rationale: 'r', from_created_at: '2026-05-01', to_created_at: '2026-05-01' },
+      { from_id: 'A', to_id: 'B', confidence: 0.95, rationale: 'r', from_created_at: '2026-05-03', to_created_at: '2026-05-01', from_topics: ['t'] },
+      { from_id: 'C', to_id: 'D', confidence: 0.6,  rationale: 'r', from_created_at: '2026-05-01', to_created_at: '2026-05-01', from_topics: ['t'] },
+      { from_id: 'E', to_id: 'F', confidence: 0.92, rationale: 'r', from_created_at: '2026-05-01', to_created_at: '2026-05-01', from_topics: ['t'] },
     ]);
     const findings = await findContradictions(pool, { limit: 100 });
     for (const f of findings) {

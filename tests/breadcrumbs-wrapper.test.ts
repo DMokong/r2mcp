@@ -12,12 +12,15 @@ describe('asMcpResponse (R2)', () => {
   });
 
   it('produces a contradiction breadcrumb when recall returns a contradicted memory', () => {
+    // Top-level signals — matches the real RecallResponse shape (claw-sup7).
     const r = asMcpResponse('recall', {
-      results: [{ id: 'm1', content: 'x', signals: { contradictions: [{ memory_id: 'm1', reason: 'r' }] } }],
+      results: [{ id: 'm1', content: 'x' }],
+      signals: [{ kind: 'contradicts', from_id: 'm1', to_id: 'm2' }],
       total_results: 1, search_mode: 'semantic', tiers_searched: ['hot'], query: 'q',
     }, {});
     const inner = JSON.parse(r.content[0].text);
     expect(inner.next_tools).toHaveLength(1);
     expect(inner.next_tools[0].name).toBe('lint');
+    expect(inner.next_tools[0].usage).toContain('--memory-id=m1');
   });
 });

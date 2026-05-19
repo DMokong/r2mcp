@@ -24,6 +24,13 @@ export interface LintFinding {
   memory_id: string;
   /** Optional companion memory when the finding is about a pair (contradictions, drift, superseded_unflagged). */
   related_memory_id?: string;
+  /**
+   * Optional first topic of `memory_id`'s memory, surfaced so downstream
+   * consumers (e.g. SPEC-047 lint→compile breadcrumb, which needs `compile
+   * --topic=<topic>`) can route findings without a second DB query. Populated
+   * by `contradictions` today; other checks may follow.
+   */
+  topic?: string;
   rationale: string;
   suggested_action: SuggestedAction;
   /** Confidence score [0..1]. `lint --fix` only acts on findings >= 0.9. */
@@ -43,6 +50,13 @@ export interface LintInput {
   limit?: number;
   /** When true, apply fixes for findings with confidence >= 0.9. */
   fix?: boolean;
+  /**
+   * Optional scope filter — only applied by the `contradictions` check today.
+   * Restricts findings to edges where either endpoint matches this memory id.
+   * Added for SPEC-047 (`lint --check=contradictions --memory-id=<id>`
+   * breadcrumb path); other checks ignore it.
+   */
+  memory_id?: string;
 }
 
 export interface LintResult {

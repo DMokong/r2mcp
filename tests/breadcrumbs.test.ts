@@ -80,11 +80,8 @@ describe('withBreadcrumbs (R1, R5, R6)', () => {
     const ctx: BreadcrumbContext = {
       tool: 'recall',
       response: {
-        results: [{
-          id: 'mem1',
-          content: 'x',
-          signals: { contradictions: [{ memory_id: 'mem1', reason: 'r' }] },
-        }],
+        results: [{ id: 'mem1', content: 'x' }],
+        signals: [{ kind: 'contradicts', from_id: 'mem1', to_id: 'mem2' }],
         total_results: 1, search_mode: 'semantic', tiers_searched: ['hot'], query: 'x',
       },
       args: {},
@@ -110,14 +107,17 @@ describe('withBreadcrumbs (R1, R5, R6)', () => {
 });
 
 describe('mapRecall (R4, AC2)', () => {
+  // Shapes now match production: signals is a TOP-LEVEL array on RecallResponse
+  // with flat {kind, from_id, to_id} entries (SPEC-044). claw-sup7.
   it('emits one lint breadcrumb per contradicted memory', () => {
     const ctx: BreadcrumbContext = {
       tool: 'recall',
       response: {
         results: [
-          { id: 'm1', content: 'a', signals: { contradictions: [{ memory_id: 'm1', reason: 'x' }] } },
-          { id: 'm2', content: 'b' },  // no contradiction
+          { id: 'm1', content: 'a' },
+          { id: 'm2', content: 'b' },
         ],
+        signals: [{ kind: 'contradicts', from_id: 'm1', to_id: 'm2' }],
         total_results: 2, search_mode: 'semantic', tiers_searched: ['hot'], query: 'q',
       },
       args: {},
@@ -142,15 +142,29 @@ describe('mapRecall (R4, AC2)', () => {
     expect(result.next_tools).toEqual([]);
   });
 
-  it('dedupes when same memory_id appears in multiple result-level signals', () => {
+  it('emits no breadcrumbs when the only signal is a non-contradicts kind', () => {
+    const result = withBreadcrumbs({}, {
+      tool: 'recall',
+      response: {
+        results: [{ id: 'm1', content: 'a' }],
+        signals: [{ kind: 'superseded_by', from_id: 'm1', to_id: 'm2' }],
+        total_results: 1, search_mode: 'semantic', tiers_searched: ['hot'], query: 'q',
+      },
+      args: {},
+    });
+    expect(result.next_tools).toEqual([]);
+  });
+
+  it('dedupes when the same from_id appears in multiple contradicts signals', () => {
     const ctx: BreadcrumbContext = {
       tool: 'recall',
       response: {
-        results: [
-          { id: 'm1', content: 'a', signals: { contradictions: [{ memory_id: 'm1', reason: 'x' }] } },
-          { id: 'm1', content: 'a', signals: { contradictions: [{ memory_id: 'm1', reason: 'y' }] } },
+        results: [{ id: 'm1', content: 'a' }],
+        signals: [
+          { kind: 'contradicts', from_id: 'm1', to_id: 'm2' },
+          { kind: 'contradicts', from_id: 'm1', to_id: 'm3' },
         ],
-        total_results: 2, search_mode: 'semantic', tiers_searched: ['hot'], query: 'q',
+        total_results: 1, search_mode: 'semantic', tiers_searched: ['hot'], query: 'q',
       },
       args: {},
     };
@@ -299,10 +313,12 @@ describe('mapExtractEntities (R4, Open Question 3 resolution)', () => {
 });
 
 describe('mapRemember (R4)', () => {
-  it('emits one recall breadcrumb when memory_id is present', () => {
+  // Shape matches production RememberResult — exposes `id`, NOT `memory_id`.
+  // claw-sup7.
+  it('emits one recall breadcrumb when id is present', () => {
     const result = withBreadcrumbs({}, {
       tool: 'remember',
-      response: { operation: 'ADD', memory_id: 'mem-abc' },
+      response: { operation: 'ADD', id: 'mem-abc' },
       args: { tier: 'hot', content: 'Decided to use X over Y because Z' },
     });
     expect(result.next_tools).toHaveLength(1);
@@ -312,16 +328,7 @@ describe('mapRemember (R4)', () => {
     expect(result.next_tools[0].why).toContain('indexed');
   });
 
-  it('uses id field as fallback when memory_id missing (older shape compat)', () => {
-    const result = withBreadcrumbs({}, {
-      tool: 'remember',
-      response: { operation: 'ADD', id: 'mem-xyz' },
-      args: { content: 'short' },
-    });
-    expect(result.next_tools).toHaveLength(1);
-  });
-
-  it('emits no breadcrumb when neither id nor memory_id present (NOOP, ARCHIVE-no-target etc.)', () => {
+  it('emits no breadcrumb when id is missing (NOOP, unresolved ARCHIVE, etc.)', () => {
     const result = withBreadcrumbs({}, {
       tool: 'remember',
       response: { operation: 'NOOP', message: 'no change' },
@@ -334,7 +341,7 @@ describe('mapRemember (R4)', () => {
     const longContent = 'a'.repeat(500);
     const result = withBreadcrumbs({}, {
       tool: 'remember',
-      response: { operation: 'ADD', memory_id: 'mem1' },
+      response: { operation: 'ADD', id: 'mem1' },
       args: { tier: 'hot', content: longContent },
     });
     // Query should be capped (e.g., first 80 chars) — keep usage strings runnable.
@@ -344,7 +351,7 @@ describe('mapRemember (R4)', () => {
   it('omits --tier when tier arg not provided', () => {
     const result = withBreadcrumbs({}, {
       tool: 'remember',
-      response: { operation: 'ADD', memory_id: 'mem1' },
+      response: { operation: 'ADD', id: 'mem1' },
       args: { content: 'x' },
     });
     expect(result.next_tools[0].usage).not.toContain('--tier=');

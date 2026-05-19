@@ -56,10 +56,26 @@ export type BreadcrumbContext =
 // Minimal structural shapes the mappers need. We do NOT re-export the full tool
 // schemas — only the fields the breadcrumb logic inspects.
 
+/**
+ * Minimal structural shape of a single recall result. Mirrors
+ * `RecallResult` in src/tools/recall.ts — the only fields the breadcrumb
+ * logic reads. The per-result `signals` field claimed by earlier drafts
+ * of this file does NOT exist on the real response; signals are top-level.
+ */
 export interface RecallResultItem {
   id: string;
   content: string;
-  signals?: { contradictions?: Array<{ memory_id: string; reason: string }> };
+}
+
+/**
+ * Recall response signal — flat shape from src/edges/types.ts `RecallSignal`.
+ * `from_id` is the memory in the recall results whose edge produced the
+ * signal; `to_id` is the partner on the other end.
+ */
+export interface RecallSignal {
+  kind: 'contradicts' | 'superseded_by';
+  from_id: string;
+  to_id: string;
 }
 
 export interface RecallResponse {
@@ -68,7 +84,8 @@ export interface RecallResponse {
   search_mode: string;
   tiers_searched: string[];
   query: string;
-  signals?: { contradictions?: Array<{ memory_id: string }> };
+  /** Top-level signals array per SPEC-044 recall response shape. */
+  signals?: RecallSignal[];
 }
 
 export interface RecallArgs {
@@ -92,10 +109,13 @@ export interface LintArgs {
   check?: string;
 }
 
+/**
+ * Mirrors `RememberResult` in src/tools/remember.ts. The remember handler
+ * sets `id` (no `memory_id`); the breadcrumb mapper reads `id` only.
+ */
 export interface RememberResponse {
   operation: string;
   id?: string;
-  memory_id?: string;
   message?: string;
 }
 
@@ -146,21 +166,23 @@ export function assertBreadcrumb(b: unknown): asserts b is Breadcrumb {
 
 export const MAX_BREADCRUMBS = 3;
 
-// Per-tool mappers — defined in Tasks 4–7. Stubs for now so the dispatcher compiles.
+// Per-tool mappers.
 function mapRecall(ctx: Extract<BreadcrumbContext, { tool: 'recall' }>): Breadcrumb[] {
+  // Production shape (SPEC-044): RecallResponse.signals is a TOP-LEVEL flat
+  // array of {kind, from_id, to_id, ...}. The earlier nested per-result
+  // `r.signals.contradictions[]` shape claimed by this mapper never existed
+  // on the real response — see claw-sup7.
   const seen = new Set<string>();
   const breadcrumbs: Breadcrumb[] = [];
-  for (const r of ctx.response.results) {
-    const cs = r.signals?.contradictions ?? [];
-    for (const c of cs) {
-      if (seen.has(c.memory_id)) continue;
-      seen.add(c.memory_id);
-      breadcrumbs.push({
-        name: 'lint',
-        usage: `lint --check=contradictions --memory-id=${c.memory_id}`,
-        why: 'recall flagged a contradiction on this memory; lint diagnoses it',
-      });
-    }
+  for (const s of ctx.response.signals ?? []) {
+    if (s.kind !== 'contradicts') continue;
+    if (seen.has(s.from_id)) continue;
+    seen.add(s.from_id);
+    breadcrumbs.push({
+      name: 'lint',
+      usage: `lint --check=contradictions --memory-id=${s.from_id}`,
+      why: 'recall flagged a contradiction on this memory; lint diagnoses it',
+    });
   }
   return breadcrumbs;
 }
@@ -185,8 +207,10 @@ function mapLint(ctx: Extract<BreadcrumbContext, { tool: 'lint' }>): Breadcrumb[
 const QUERY_SNIPPET_MAX = 80;
 
 function mapRemember(ctx: Extract<BreadcrumbContext, { tool: 'remember' }>): Breadcrumb[] {
-  const memId = ctx.response.memory_id ?? ctx.response.id;
-  if (!memId) return [];
+  // Production shape: RememberResult exposes `id` only (no `memory_id`).
+  // The breadcrumb fires for ADD/UPDATE/REJECTION (which set id) and skips
+  // NOOP / unresolved ARCHIVE (which leave id undefined). claw-sup7.
+  if (!ctx.response.id) return [];
   const content = (ctx.args as RememberArgs).content ?? '';
   if (!content.trim()) return [];
 

@@ -473,6 +473,13 @@ server.tool(
     since_days: z.number().optional(),
     limit: z.number().optional(),
     fix: z.boolean().optional(),
+    memory_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe(
+        'SPEC-047: scope `contradictions` to edges where either endpoint matches this memory id. Ignored by other checks.',
+      ),
   },
   async (args) => {
     const result = await withToolSpan(
@@ -487,6 +494,7 @@ server.tool(
           since_days: args.since_days,
           limit: args.limit,
           fix: args.fix,
+          memory_id: args.memory_id,
         });
         span.setAttribute('total_findings', r.summary.total_findings);
         span.setAttribute('fixes_applied', r.fixes_applied?.length ?? 0);
