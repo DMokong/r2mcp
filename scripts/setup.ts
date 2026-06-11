@@ -14,24 +14,16 @@
 
 import pg from 'pg';
 import pgvector from 'pgvector/pg';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateDatabaseUrl, classifySetupError, redactDatabaseUrl } from './setup-helpers.js';
+import { loadEnvFile } from '../src/env.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Load .env from project root
-const envPath = resolve(__dirname, '..', '.env');
-if (existsSync(envPath)) {
-  const envContent = readFileSync(envPath, 'utf-8');
-  for (const line of envContent.split('\n')) {
-    const match = line.match(/^([A-Z_]+)=(.+)$/);
-    if (match && !process.env[match[1]]) {
-      process.env[match[1]] = match[2].trim();
-    }
-  }
-}
+loadEnvFile(resolve(__dirname, '..', '.env'));
 
 const R2MCP_DATABASE_URL = process.env.R2MCP_DATABASE_URL || 'postgresql://localhost:5432/r2mcp';
 

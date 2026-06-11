@@ -1,7 +1,6 @@
 // OTel instrumentation MUST be imported first — before any other module
 import './instrumentation.js';
 
-import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -18,6 +17,7 @@ import { classify } from './tools/classify.js';
 import { extractEntitiesTool } from './tools/extract-entities.js';
 import { dumpEdgesSidecarTool } from './tools/dump-edges-sidecar.js';
 import { lint } from './tools/lint.js';
+import { loadEnvFile } from './env.js';
 import { withToolSpan } from './telemetry.js';
 import { asMcpResponse } from './mcp-response.js';
 
@@ -28,16 +28,7 @@ export { asMcpResponse };
 
 // Load .env from project root — MCP servers don't inherit parent env vars
 const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
-const envPath = resolve(PROJECT_ROOT, '.env');
-if (existsSync(envPath)) {
-  const envContent = readFileSync(envPath, 'utf-8');
-  for (const line of envContent.split('\n')) {
-    const match = line.match(/^([A-Z_]+)=(.+)$/);
-    if (match && !process.env[match[1]]) {
-      process.env[match[1]] = match[2].trim();
-    }
-  }
-}
+loadEnvFile(resolve(PROJECT_ROOT, '.env'));
 
 const server = new McpServer({
   name: 'r2mcp',
