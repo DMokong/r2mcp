@@ -21,7 +21,6 @@ import '../src/instrumentation.js';
  *   1 — fatal error (DB, no provider, validation failure, etc.)
  */
 
-import { readFileSync, existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -35,6 +34,7 @@ import {
 import { runCompile } from '../src/compiler/run.js';
 import type { EdgeForCompile, MemoryForCompile, Tier } from '../src/compiler/types.js';
 import { withToolSpan } from '../src/telemetry.js';
+import { loadEnvFile } from '../src/env.js';
 
 interface CliArgs {
   tier?: Tier;
@@ -149,17 +149,7 @@ function gitSha(cwd: string): string | null {
 // Load .env from project root — launchd-spawned subprocesses don't inherit
 // shell env, so OTEL_ENABLED + DB URL + provider keys must be loaded here
 // (claw-1ejd; mirrors src/index.ts).
-const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
-const envPath = resolve(PROJECT_ROOT, '.env');
-if (existsSync(envPath)) {
-  const envContent = readFileSync(envPath, 'utf-8');
-  for (const line of envContent.split('\n')) {
-    const match = line.match(/^([A-Z_]+)=(.+)$/);
-    if (match && !process.env[match[1]]) {
-      process.env[match[1]] = match[2].trim();
-    }
-  }
-}
+loadEnvFile(resolve(process.env.PROJECT_ROOT || process.cwd(), '.env'));
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
