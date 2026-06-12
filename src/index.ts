@@ -19,6 +19,12 @@ import { extractEntitiesTool } from './tools/extract-entities.js';
 import { dumpEdgesSidecarTool } from './tools/dump-edges-sidecar.js';
 import { lint } from './tools/lint.js';
 import { withToolSpan } from './telemetry.js';
+import { asMcpResponse } from './mcp-response.js';
+
+// Re-export for backwards compatibility with anything that imported asMcpResponse
+// from src/index.js before SPEC-047's mcp-response.ts split. New callers should
+// import directly from './mcp-response.js'.
+export { asMcpResponse };
 
 // Load .env from project root — MCP servers don't inherit parent env vars
 const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
@@ -40,7 +46,7 @@ const server = new McpServer({
 
 server.tool(
   'remember',
-  'Store, update, or archive a memory in the long-term memory system.',
+  'Store, update, or archive a memory in the long-term memory system. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {
     operation: z.enum(['ADD', 'UPDATE', 'ARCHIVE', 'REJECTION', 'NOOP']),
     tier: z.enum(['preferences', 'project-context', 'conversations']),
@@ -84,15 +90,13 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('remember', result, args);
   },
 );
 
 server.tool(
   'recall',
-  'Search memory using semantic similarity and full-text search. Supports progressive tier search, MMR diversity, relevance floor, and token-budget-based retrieval.',
+  'Search memory using semantic similarity and full-text search. Supports progressive tier search, MMR diversity, relevance floor, and token-budget-based retrieval. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {
     query: z
       .string()
@@ -168,15 +172,13 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('recall', result, args);
   },
 );
 
 server.tool(
   'search',
-  'Search memory using structured metadata filters (type, tier, topics, persons, date range) with optional full-text query.',
+  'Search memory using structured metadata filters (type, tier, topics, persons, date range) with optional full-text query. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {
     filter: z
       .object({
@@ -209,15 +211,13 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('search', result, args);
   },
 );
 
 server.tool(
   'stats',
-  'Get system health statistics for r2mcp memory — counts by tier/type, staleness, top topics, embedding index status.',
+  'Get system health statistics for r2mcp memory — counts by tier/type, staleness, top topics, embedding index status. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {},
   async () => {
     const result = await withToolSpan('stats', {}, async (span) => {
@@ -226,15 +226,13 @@ server.tool(
       return r;
     });
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('stats', result, {});
   },
 );
 
 server.tool(
   'reject',
-  'Mark an existing memory as rejected and store the rejection reason. Rejected memories are excluded from recall and search results.',
+  'Mark an existing memory as rejected and store the rejection reason. Rejected memories are excluded from recall and search results. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {
     id: z.string(),
     reason: z.string(),
@@ -244,15 +242,13 @@ server.tool(
       return reject({ id: args.id, reason: args.reason });
     });
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('reject', result, args);
   },
 );
 
 server.tool(
   'meditate',
-  'Run memory consolidation — archives stale entries, checks for duplicates, finds cross-references, clusters by theme, and surfaces gaps.',
+  'Run memory consolidation — archives stale entries, checks for duplicates, finds cross-references, clusters by theme, and surfaces gaps. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {
     mode: z.enum(['full']).default('full'),
     dry_run: z.boolean().optional().default(false),
@@ -276,15 +272,13 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('meditate', result, args);
   },
 );
 
 server.tool(
   'compile',
-  'Regenerate the wiki view of memory — synthesize tier or topic markdown from pgvector. Output to memory/compiled/. Modes: tier (single tier), all (three tiers), topic (per-topic page), dry_run (preview to stdout).',
+  'Regenerate the wiki view of memory — synthesize tier or topic markdown from pgvector. Output to memory/compiled/. Modes: tier (single tier), all (three tiers), topic (per-topic page), dry_run (preview to stdout). Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {
     tier: z.enum(['preferences', 'project-context', 'conversations']).optional(),
     all: z.boolean().optional(),
@@ -319,15 +313,13 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('compile', result, args);
   },
 );
 
 server.tool(
   'classify',
-  'Classify candidate memory pairs into typed edges (supports, contradicts, supersedes, evolved_into, depends_on, related_to). Wraps the SPEC-043 edge classifier with cost cap and provider auto-fallback. Subprocess-spawned per the MCP-server-makes-no-LLM-calls invariant.',
+  'Classify candidate memory pairs into typed edges (supports, contradicts, supersedes, evolved_into, depends_on, related_to). Wraps the SPEC-043 edge classifier with cost cap and provider auto-fallback. Subprocess-spawned per the MCP-server-makes-no-LLM-calls invariant. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {
     since_days: z
       .number()
@@ -371,15 +363,13 @@ server.tool(
         return r;
       },
     );
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('classify', result, args);
   },
 );
 
 server.tool(
   'extract_entities',
-  'Extract structured entities (project / person / tool / decision) from memories. Spawns a subprocess driver that uses LLMProvider (Haiku-class). Inherits cost cap, resumable runs, and candidate pre-filtering from SPEC-043 patterns.',
+  'Extract structured entities (project / person / tool / decision) from memories. Spawns a subprocess driver that uses LLMProvider (Haiku-class). Inherits cost cap, resumable runs, and candidate pre-filtering from SPEC-043 patterns. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {
     since_days: z
       .number()
@@ -444,15 +434,13 @@ server.tool(
         return r;
       },
     );
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('extract_entities', result, args);
   },
 );
 
 server.tool(
   'dump_edges_sidecar',
-  'Write memory_edges and memories as JSON sidecar files for downstream consumers (Memory Explorer, /memory-doctor, etc.). In-process pgvector dump — no subprocess, no LLM calls.',
+  'Write memory_edges and memories as JSON sidecar files for downstream consumers (Memory Explorer, /memory-doctor, etc.). In-process pgvector dump — no subprocess, no LLM calls. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {
     out_dir: z
       .string()
@@ -471,15 +459,13 @@ server.tool(
         return r;
       },
     );
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('dump_edges_sidecar', result, args);
   },
 );
 
 server.tool(
   'lint',
-  'Surface structural feedback on the memory store: contradictions, stale, orphans, drift, superseded_unflagged. SQL-only (no LLM calls). Pass `fix: true` to apply auto-fixes for findings with confidence >= 0.9.',
+  'Surface structural feedback on the memory store: contradictions, stale, orphans, drift, superseded_unflagged. SQL-only (no LLM calls). Pass `fix: true` to apply auto-fixes for findings with confidence >= 0.9. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
   {
     check: z
       .enum(['contradictions', 'stale', 'orphans', 'drift', 'superseded_unflagged'])
@@ -487,6 +473,13 @@ server.tool(
     since_days: z.number().optional(),
     limit: z.number().optional(),
     fix: z.boolean().optional(),
+    memory_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe(
+        'SPEC-047: scope `contradictions` to edges where either endpoint matches this memory id. Ignored by other checks.',
+      ),
   },
   async (args) => {
     const result = await withToolSpan(
@@ -501,6 +494,7 @@ server.tool(
           since_days: args.since_days,
           limit: args.limit,
           fix: args.fix,
+          memory_id: args.memory_id,
         });
         span.setAttribute('total_findings', r.summary.total_findings);
         span.setAttribute('fixes_applied', r.fixes_applied?.length ?? 0);
@@ -508,9 +502,7 @@ server.tool(
       },
     );
 
-    return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    };
+    return asMcpResponse('lint', result, args);
   },
 );
 

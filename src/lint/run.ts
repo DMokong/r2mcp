@@ -33,7 +33,9 @@ export async function runLint(input: LintInput, pool: PoolLike): Promise<LintRes
   const findings: LintFinding[] = [];
   for (const check of checksToRun) {
     if (check === 'contradictions') {
-      findings.push(...(await findContradictions(pool, { limit })));
+      findings.push(
+        ...(await findContradictions(pool, { limit, memoryId: input.memory_id })),
+      );
     } else if (check === 'stale') {
       findings.push(...(await findStale(pool, { sinceDays, limit })));
     } else if (check === 'orphans') {
