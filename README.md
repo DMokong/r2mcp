@@ -476,3 +476,7 @@ When `recall()` is called with `entity` set:
 - `query` is optional — entity-only recall returns all memories linked to the entity (matched by canonical name or any alias).
 - The response carries `entity_resolved: boolean` and, when resolved, `entity_id`.
 - Each result carries an `entity_links[]` array describing how that memory connects to the named entity.
+
+## License
+
+[MIT](LICENSE)

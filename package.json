@@ -2,6 +2,7 @@
   "name": "r2mcp",
   "version": "0.1.0",
   "description": "Persistent semantic memory layer for Claude Code — PostgreSQL + pgvector + OpenRouter embeddings",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "files": [
