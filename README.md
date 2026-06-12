@@ -19,7 +19,7 @@ Persistent, semantic, tiered memory layer for Claude Code sessions.
 
 ## Setup
 
-**Prerequisites:** Node.js 20+, OpenRouter API key. Docker optional (Option B only).
+**Prerequisites:** Node.js 20+. An OpenRouter API key is strongly recommended — it powers semantic-search embeddings. Without one, r2mcp still works but degrades to full-text search (and tells you so via a startup warning and `warnings[]` on tool responses). Docker is optional (Option B only).
 
 r2mcp works with any PostgreSQL + pgvector backend. The fastest path is Supabase (free tier, no Docker required).
 
@@ -27,15 +27,17 @@ r2mcp works with any PostgreSQL + pgvector backend. The fastest path is Supabase
 
 #### 1. Create a Supabase project
 
-Create a free project at [supabase.com](https://supabase.com). Once created, go to **Project Settings → Database → Connection string → Direct** (not Pooler) and copy the URL (port 5432).
+Create a free project at [supabase.com](https://supabase.com). Once created, click **Connect** (top of the dashboard) and copy the **Session pooler** connection string — port `5432`, host like `aws-0-<region>.pooler.supabase.com`, username `postgres.<project-ref>`.
+
+> **Why the Session pooler?** The Direct connection (`db.<ref>.supabase.co:5432`) resolves to an IPv6 address, and IPv4 for direct connections is a paid add-on — on an IPv4-only network it fails with `connect ENETUNREACH`. The Session pooler is IPv4-compatible on every tier and fully supports schema setup. (Do **not** use the Transaction pooler on port `6543` — it can't run DDL; setup will refuse it.) If your network has IPv6, the Direct connection works too.
 
 #### 2. Clone and configure
 
 ```bash
 git clone https://github.com/DMokong/r2mcp.git && cd r2mcp && npm install
 cp .env.example .env
-# Set R2MCP_DATABASE_URL to your Supabase direct URL (port 5432, not 6543)
-# Set R2MCP_OPENROUTER_API_KEY to your OpenRouter key
+# Set R2MCP_DATABASE_URL to your Session pooler URL (port 5432, not 6543)
+# Set R2MCP_OPENROUTER_API_KEY to your OpenRouter key (enables semantic search)
 ```
 
 #### 3. Provision schema and build
@@ -48,7 +50,7 @@ This creates the `memories` table, pgvector indexes, and full-text search index.
 
 #### 4. Register in Claude Code
 
-Add to your project's `.mcp.json`:
+Add to your project's `.mcp.json`. Use `${VAR}` expansion so credentials stay in your environment instead of the file — **`.mcp.json` is typically committed, so never paste real credentials into it**:
 
 ```json
 {
@@ -57,15 +59,17 @@ Add to your project's `.mcp.json`:
       "command": "node",
       "args": ["/path/to/r2mcp/dist/index.js"],
       "env": {
-        "R2MCP_DATABASE_URL": "postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres",
-        "R2MCP_OPENROUTER_API_KEY": "your_key_here"
+        "R2MCP_DATABASE_URL": "${R2MCP_DATABASE_URL}",
+        "R2MCP_OPENROUTER_API_KEY": "${R2MCP_OPENROUTER_API_KEY}"
       }
     }
   }
 }
 ```
 
-Restart Claude Code. You now have `mcp__memory__remember`, `mcp__memory__recall`, etc. available.
+Claude Code expands `${VAR}` (and `${VAR:-default}`) from your environment at launch. Inline literal values are fine only for throwaway local experiments — if you go that route, gitignore `.mcp.json` and treat any committed credential as compromised.
+
+Restart Claude Code, then see [After setup](#after-setup-both-options).
 
 ---
 
@@ -121,27 +125,53 @@ Add to your project's `.mcp.json`:
       "args": ["/path/to/r2mcp/dist/index.js"],
       "env": {
         "R2MCP_DATABASE_URL": "postgresql://r2mcp:r2mcp@localhost:5432/r2mcp",
-        "R2MCP_OPENROUTER_API_KEY": "your_key_here"
+        "R2MCP_OPENROUTER_API_KEY": "${R2MCP_OPENROUTER_API_KEY}"
       }
     }
   }
 }
 ```
 
-Restart Claude Code. You now have `mcp__memory__remember`, `mcp__memory__recall`, etc. available.
+(The local Docker DB URL contains no real secret; the OpenRouter key does — keep it in your environment via `${VAR}` expansion.)
 
-#### 7. Install the /remember skill (optional but recommended)
+Restart Claude Code, then see [After setup](#after-setup-both-options).
+
+## After setup (both options)
+
+You now have `mcp__memory__remember`, `mcp__memory__recall`, etc. available. Two optional steps make memory actually get used:
+
+### Install the /remember skill (recommended)
+
+The bundled skill gives Claude a judgment pipeline for memory writes — classify → conflict-check → store. Copy it into your **consuming project** (the one whose `.mcp.json` registers r2mcp):
 
 ```bash
-cp -r skills/remember .claude/plugins/
+mkdir -p .claude/skills && cp -r /path/to/r2mcp/skills/remember .claude/skills/
 ```
 
-Then use `/remember <note>` in Claude Code to persist memories with full judgment pipeline.
+Claude Code auto-discovers project skills from `.claude/skills/<name>/SKILL.md`. (For all your projects at once, use `~/.claude/skills/` instead.) Then `/remember <note>` persists memories through the full pipeline.
+
+### Teach your agent the session loop (recommended)
+
+r2mcp ships MCP server instructions that Claude Code loads automatically, so the agent knows the basics. For stronger habits, add a short protocol to your project's `CLAUDE.md`:
+
+```markdown
+## Memory
+
+This project has persistent memory via the `memory` MCP server.
+- At session start, `recall` context relevant to the task at hand.
+- When a durable decision, preference, or correction surfaces, `remember` it
+  (tier: preferences = decisions/style, project-context = architecture/state,
+  conversations = session continuity).
+- Run `/remember` before ending a work session to persist anything unsaved.
+```
+
+**First session on an empty database:** `recall` returning zero results is expected — start `remember`-ing as decisions come up and recall pays off within a session or two.
 
 ## Configuration
 
-r2mcp reads its configuration entirely from the MCP transport's environment.
-For consumers, that means **`.mcp.json env` is the sole config surface**:
+r2mcp reads its configuration from the MCP transport's environment — for
+consumers, **the `.mcp.json` `env` block is the primary config surface**
+(use `${VAR}` expansion for secrets):
 
 ```json
 {
@@ -150,9 +180,8 @@ For consumers, that means **`.mcp.json env` is the sole config surface**:
       "command": "node",
       "args": ["./node_modules/r2mcp/dist/index.js"],
       "env": {
-        "R2MCP_DATABASE_URL": "postgres://...",
-        "R2MCP_OPENROUTER_API_KEY": "sk-or-...",
-        "ANTHROPIC_API_KEY": "sk-ant-...",
+        "R2MCP_DATABASE_URL": "${R2MCP_DATABASE_URL}",
+        "R2MCP_OPENROUTER_API_KEY": "${R2MCP_OPENROUTER_API_KEY}",
         "R2MCP_CLASSIFIER_PROVIDER": "claude-code",
         "R2MCP_EDGE_MAX_USD": "1.00",
         "R2MCP_COMPILE_MAX_USD": "1.00"
@@ -162,9 +191,30 @@ For consumers, that means **`.mcp.json env` is the sole config surface**:
 }
 ```
 
-A `.env` file at the r2mcp source root (`r2mcp/.env`) is **dev-only** —
-used by `npm run` scripts in this repo when working from a checkout.
-Production consumers do not need it.
+| Variable | Required | What it does |
+|----------|----------|--------------|
+| `R2MCP_DATABASE_URL` | **Yes** | PostgreSQL + pgvector connection string. The server **fails fast at startup** if unset — it never guesses a database. |
+| `R2MCP_OPENROUTER_API_KEY` | Recommended | Enables semantic-search embeddings. When unset, the server logs a startup warning and `remember`/`recall` responses carry a `warnings[]` field — everything still works full-text. |
+| `R2MCP_CLAUDE_BIN` | Sometimes | Absolute path to the `claude` binary for the $0 Max-plan provider. Needed when the spawning process's PATH doesn't include it — common under launchd jobs and some MCP hosts (e.g. `~/.local/bin/claude`). The spawn error names this variable when it's the fix. |
+| `ANTHROPIC_API_KEY` | Optional | Only for `--provider=anthropic` on classifier/compile runs. |
+| `R2MCP_CLASSIFIER_PROVIDER` | Optional | Pin a provider (`claude-code` \| `anthropic` \| `openrouter`) instead of auto-fallback. |
+| `R2MCP_EDGE_MAX_USD` / `R2MCP_COMPILE_MAX_USD` / `R2MCP_ENTITY_MAX_USD` | Optional | Cost caps for the batch jobs (defaults `$1.00`). |
+
+The server also loads a `.env` file from its working directory at startup
+(non-clobbering — real environment variables always win). A `.env` at the
+r2mcp source root is the normal path for `npm run` scripts when working from
+a checkout; consumers configuring via `.mcp.json env` don't need one.
+
+## Troubleshooting
+
+| Symptom | Cause & fix |
+|---------|-------------|
+| `connect ENETUNREACH 2406:...` during setup | Supabase Direct connection is IPv6-only (IPv4 is a paid add-on) and your network is IPv4-only. Use the **Session pooler** string instead: Dashboard → Connect → Session pooler (port 5432). Setup classifies this error and says the same. |
+| `Transaction-pooler URL detected (port 6543)` | The transaction pooler can't run DDL or prepared statements. Use the Session pooler (port 5432). |
+| `R2MCP_DATABASE_URL is not set` | Deliberate fail-fast — set it in `.mcp.json env` or `.env`. The error lists both surfaces and the Docker default URL. |
+| `embeddings disabled` warning at startup or in `warnings[]` | `R2MCP_OPENROUTER_API_KEY` is unset (or the embed call failed — the message distinguishes the two). Full-text search still works; set the key to enable semantic search. |
+| `could not spawn 'claude' (ENOENT)` on classifier/compile runs | The claude CLI isn't on the spawning process's PATH. Set `R2MCP_CLAUDE_BIN` to its absolute path. |
+| Fresh credentials rejected right after a Supabase password reset | The pooler caches auth-rejection state for 30–60s. Wait a minute and retry before assuming the rotation failed. |
 
 ## Memory Tiers
 

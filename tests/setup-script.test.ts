@@ -28,10 +28,10 @@ describe('validateDatabaseUrl()', () => {
     ).not.toThrow();
   });
 
-  it('rejects a Supabase pooler URL (port 6543) with a message containing "direct (non-pooled) connection"', () => {
+  it('rejects a transaction-pooler URL (port 6543) and points at the Session pooler', () => {
     expect(() =>
       validateDatabaseUrl('postgresql://postgres:pass@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres')
-    ).toThrow(/direct \(non-pooled\) connection/);
+    ).toThrow(/session pooler/i);
   });
 
   it('rejects port 6543 on any host and mentions port 5432 in the error', () => {
@@ -84,5 +84,25 @@ describe('classifySetupError()', () => {
     const result = classifySetupError(err, url);
     expect(result.cause).toContain('some unexpected database error');
     expect(result.fix).toMatch(/R2MCP_DATABASE_URL/i);
+  });
+});
+
+describe('classifySetupError — ENETUNREACH (claw-8cjf.5)', () => {
+  const url = 'postgresql://user:***@db.abcdef.supabase.co:5432/postgres';
+
+  it('classifies ENETUNREACH as an IPv6 reachability problem pointing at the session pooler', () => {
+    const err = Object.assign(new Error('connect ENETUNREACH 2406:da14:271:9901::1:5432'), {
+      code: 'ENETUNREACH',
+    });
+    const result = classifySetupError(err, url);
+    expect(result.cause).toMatch(/ipv6/i);
+    expect(result.fix).toMatch(/session pooler/i);
+    expect(result.fix).toMatch(/pooler\.supabase\.com/);
+  });
+
+  it('classifies message-only ENETUNREACH the same way', () => {
+    const err = new Error('connect ENETUNREACH 2406:da14:271:9901::1:5432');
+    const result = classifySetupError(err, url);
+    expect(result.fix).toMatch(/session pooler/i);
   });
 });

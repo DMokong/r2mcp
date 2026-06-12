@@ -106,6 +106,21 @@ export async function probeClaudeCode(
   }
 }
 
+/**
+ * claw-8cjf.7: an ENOENT here means the claude CLI isn't on this process's
+ * PATH (common under launchd / MCP hosts with sanitized PATH). Name the
+ * escape hatch instead of surfacing a bare `spawn claude ENOENT`.
+ */
+function wrapSpawnError(err: Error, binary: string): Error {
+  if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return err;
+  return new Error(
+    `could not spawn '${binary}' (ENOENT) — the claude CLI is not on this process's PATH. ` +
+      `Set R2MCP_CLAUDE_BIN to the absolute path of the claude binary ` +
+      `(e.g. ~/.local/bin/claude) in your environment or .mcp.json "env" block.`,
+    { cause: err },
+  );
+}
+
 function runClaude(
   spawnFn: typeof spawn,
   binary: string,
@@ -117,7 +132,7 @@ function runClaude(
     try {
       child = spawnFn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (err) {
-      reject(err instanceof Error ? err : new Error(String(err)));
+      reject(wrapSpawnError(err instanceof Error ? err : new Error(String(err)), binary));
       return;
     }
     let stdout = '';
@@ -139,7 +154,7 @@ function runClaude(
     });
     child.on('error', (err) => {
       clearTimeout(timer);
-      reject(err);
+      reject(wrapSpawnError(err, binary));
     });
     child.on('exit', (code, signal) => {
       clearTimeout(timer);

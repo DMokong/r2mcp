@@ -12,13 +12,14 @@ export function validateDatabaseUrl(url: string): void {
 
   if (parsed.port === '6543') {
     throw new Error(
-      `Supabase pooler URL detected (port 6543).\n` +
-      `Schema setup requires a direct (non-pooled) connection — use port 5432.\n` +
+      `Transaction-pooler URL detected (port 6543).\n` +
+      `Schema setup needs a session-capable connection — the transaction pooler does not\n` +
+      `support prepared statements or DDL. Use the Session pooler (port 5432) instead:\n` +
       `\n` +
-      `Find your direct URL in:\n` +
-      `  Supabase Dashboard → Project Settings → Database → Connection string → URI\n` +
+      `  Supabase Dashboard → Connect (top of page) → Session pooler\n` +
       `\n` +
-      `It looks like: postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres`
+      `It looks like: postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres\n` +
+      `(A Direct connection also works if your network has IPv6 or the IPv4 add-on.)`
     );
   }
 }
@@ -58,6 +59,17 @@ export function classifySetupError(err: Error, redactedUrl: string): SetupErrorC
     return {
       cause: `pgvector extension not available at ${redactedUrl}`,
       fix: 'Enable pgvector: Supabase Dashboard → Database → Extensions → search "vector" → Enable. For Docker, use pgvector/pgvector:pg17 image.',
+    };
+  }
+
+  if (code === 'ENETUNREACH' || msg.includes('enetunreach')) {
+    return {
+      cause: `Network unreachable (IPv6) — could not reach ${redactedUrl}`,
+      fix:
+        'The Supabase Direct connection resolves to an IPv6 address, and this network appears to be IPv4-only ' +
+        '(IPv4 for direct connections is a paid add-on). Use the Session pooler instead: in the Supabase dashboard ' +
+        'click "Connect" and copy the Session pooler string (port 5432, host like aws-0-<region>.pooler.supabase.com, ' +
+        'username postgres.<project-ref>). It is IPv4-compatible on every tier and supports schema setup.',
     };
   }
 

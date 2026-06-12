@@ -18,6 +18,7 @@ import { extractEntitiesTool } from './tools/extract-entities.js';
 import { dumpEdgesSidecarTool } from './tools/dump-edges-sidecar.js';
 import { lint } from './tools/lint.js';
 import { loadEnvFile } from './env.js';
+import { SERVER_INSTRUCTIONS } from './server-instructions.js';
 import { EMBEDDINGS_DISABLED_WARNING } from './embeddings.js';
 import { withToolSpan } from './telemetry.js';
 import { asMcpResponse } from './mcp-response.js';
@@ -31,10 +32,15 @@ export { asMcpResponse };
 const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
 loadEnvFile(resolve(PROJECT_ROOT, '.env'));
 
-const server = new McpServer({
-  name: 'r2mcp',
-  version: '0.1.0',
-});
+const server = new McpServer(
+  {
+    name: 'r2mcp',
+    version: '0.1.0',
+  },
+  // Sent in the initialize response; Claude Code loads this into the agent's
+  // context at session start (claw-8cjf.8 — first-session guidance).
+  { instructions: SERVER_INSTRUCTIONS },
+);
 
 server.tool(
   'remember',

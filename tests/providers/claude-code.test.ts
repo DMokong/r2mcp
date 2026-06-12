@@ -108,3 +108,47 @@ describe('probeClaudeCode', () => {
     expect(await probeClaudeCode({ spawnFn })).toBe(false);
   });
 });
+
+describe('spawn-failure remediation (claw-8cjf.7)', () => {
+  function fakeSpawnEnoent() {
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+      kill: (signal?: string) => void;
+    };
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = vi.fn();
+    setImmediate(() => {
+      child.emit('error', Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' }));
+    });
+    return child;
+  }
+
+  it('ENOENT spawn failure names R2MCP_CLAUDE_BIN in the error', async () => {
+    const spawnFn = vi.fn(() =>
+      fakeSpawnEnoent(),
+    ) as unknown as typeof import('node:child_process').spawn;
+    const p = new ClaudeCodeProvider({ spawnFn });
+    await expect(p.complete({ model: 'haiku', prompt: 'hi' })).rejects.toThrow(/R2MCP_CLAUDE_BIN/);
+  });
+
+  it('non-ENOENT spawn errors pass through unwrapped', async () => {
+    const spawnFn = vi.fn(() => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+        kill: (signal?: string) => void;
+      };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = vi.fn();
+      setImmediate(() => {
+        child.emit('error', Object.assign(new Error('spawn claude EACCES'), { code: 'EACCES' }));
+      });
+      return child;
+    }) as unknown as typeof import('node:child_process').spawn;
+    const p = new ClaudeCodeProvider({ spawnFn });
+    await expect(p.complete({ model: 'haiku', prompt: 'hi' })).rejects.toThrow(/EACCES/);
+  });
+});
