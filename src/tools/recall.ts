@@ -1,5 +1,5 @@
 import { getPool } from '../db.js';
-import { embedText } from '../embeddings.js';
+import { embedText, embeddingWarning } from '../embeddings.js';
 import pgvector from 'pgvector';
 import { getSignalsForMemoryIds } from '../edges/signals.js';
 import type { RecallSignal } from '../edges/types.js';
@@ -64,6 +64,8 @@ export interface RecallResponse {
   entity_resolved?: boolean;
   /** SPEC-046: present only when `entity_resolved` is true. */
   entity_id?: string;
+  /** Present only when the search ran degraded, e.g. embeddings unavailable (claw-8cjf.2). */
+  warnings?: string[];
 }
 
 export interface RecallInput {
@@ -452,6 +454,8 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
   // would either burn an embedding round-trip for nothing or break ranking.
   const skipRanking = entityFilterActive && (!query || query === '');
   const queryEmbedding = skipRanking ? null : await embedText(query);
+  // Only warn when an embedding was actually attempted (claw-8cjf.2).
+  const degradedWarning = skipRanking ? null : embeddingWarning(queryEmbedding);
 
   let hasDbEmbeddings = false;
   if (queryEmbedding) {
@@ -562,6 +566,7 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
       signals,
       entity_resolved: true,
       entity_id: resolvedEntity.id,
+      ...(degradedWarning ? { warnings: [degradedWarning] } : {}),
     };
   }
 
@@ -574,5 +579,6 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
     tokens_used: tokensUsed,
     early_stopped: earlyStopped,
     signals,
+    ...(degradedWarning ? { warnings: [degradedWarning] } : {}),
   };
 }

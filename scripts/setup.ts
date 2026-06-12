@@ -19,13 +19,20 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateDatabaseUrl, classifySetupError, redactDatabaseUrl } from './setup-helpers.js';
 import { loadEnvFile } from '../src/env.js';
+import { MISSING_DATABASE_URL_MESSAGE } from '../src/db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Load .env from project root
 loadEnvFile(resolve(__dirname, '..', '.env'));
 
-const R2MCP_DATABASE_URL = process.env.R2MCP_DATABASE_URL || 'postgresql://localhost:5432/r2mcp';
+// claw-8cjf.2: fail fast instead of defaulting to a credential-less localhost
+// URL that matches neither the Docker compose setup nor any hosted option.
+if (!process.env.R2MCP_DATABASE_URL) {
+  console.error(`\n❌ ${MISSING_DATABASE_URL_MESSAGE}`);
+  process.exit(1);
+}
+const R2MCP_DATABASE_URL = process.env.R2MCP_DATABASE_URL;
 
 async function setup() {
   const redactedUrl = redactDatabaseUrl(R2MCP_DATABASE_URL);

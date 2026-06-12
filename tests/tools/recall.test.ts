@@ -174,3 +174,26 @@ describe('recall() tool', () => {
     }
   });
 });
+
+describe('degraded-embedding warnings (claw-8cjf.2)', () => {
+  it('full-text fallback recall carries a warnings[] naming the env var', async () => {
+    const savedKey = process.env.R2MCP_OPENROUTER_API_KEY;
+    delete process.env.R2MCP_OPENROUTER_API_KEY;
+    try {
+      await remember({
+        operation: 'ADD',
+        tier: 'preferences',
+        content: 'Recall warnings surface embedding degradation',
+        metadata: { type: 'preference', topics: ['warnings'] },
+      });
+      const response = await recall({ query: 'embedding degradation' });
+      expect(response.search_mode).toBe('fulltext_only');
+      expect(response.warnings).toBeDefined();
+      expect(response.warnings![0]).toContain('R2MCP_OPENROUTER_API_KEY');
+    } finally {
+      if (savedKey !== undefined) {
+        process.env.R2MCP_OPENROUTER_API_KEY = savedKey;
+      }
+    }
+  });
+});

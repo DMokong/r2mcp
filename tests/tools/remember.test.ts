@@ -183,3 +183,59 @@ describe('remember() tool', () => {
     }
   });
 });
+
+describe('degraded-embedding warnings (claw-8cjf.2)', () => {
+  it('ADD without an OpenRouter key carries a warnings[] naming the env var', async () => {
+    const savedKey = process.env.R2MCP_OPENROUTER_API_KEY;
+    delete process.env.R2MCP_OPENROUTER_API_KEY;
+    try {
+      const result = await remember({
+        operation: 'ADD',
+        tier: 'preferences',
+        content: 'Warnings surface degraded embedding storage',
+        metadata: { type: 'preference', topics: ['warnings'] },
+      });
+      expect(result.operation).toBe('ADD');
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings![0]).toContain('R2MCP_OPENROUTER_API_KEY');
+    } finally {
+      if (savedKey !== undefined) {
+        process.env.R2MCP_OPENROUTER_API_KEY = savedKey;
+      }
+    }
+  });
+
+  it('NOOP and dedup paths carry no warnings', async () => {
+    const savedKey = process.env.R2MCP_OPENROUTER_API_KEY;
+    delete process.env.R2MCP_OPENROUTER_API_KEY;
+    try {
+      const noop = await remember({
+        operation: 'NOOP',
+        tier: 'preferences',
+        content: '',
+        metadata: { type: 'preference' },
+      });
+      expect(noop.warnings).toBeUndefined();
+
+      const content = 'Dedup path skips embedding entirely';
+      await remember({
+        operation: 'ADD',
+        tier: 'preferences',
+        content,
+        metadata: { type: 'preference' },
+      });
+      const dup = await remember({
+        operation: 'ADD',
+        tier: 'preferences',
+        content,
+        metadata: { type: 'preference' },
+      });
+      expect(dup.dedup).toBe(true);
+      expect(dup.warnings).toBeUndefined();
+    } finally {
+      if (savedKey !== undefined) {
+        process.env.R2MCP_OPENROUTER_API_KEY = savedKey;
+      }
+    }
+  });
+});

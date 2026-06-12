@@ -18,6 +18,7 @@ import { extractEntitiesTool } from './tools/extract-entities.js';
 import { dumpEdgesSidecarTool } from './tools/dump-edges-sidecar.js';
 import { lint } from './tools/lint.js';
 import { loadEnvFile } from './env.js';
+import { EMBEDDINGS_DISABLED_WARNING } from './embeddings.js';
 import { withToolSpan } from './telemetry.js';
 import { asMcpResponse } from './mcp-response.js';
 
@@ -525,6 +526,9 @@ function wireParentDisconnectHandlers(): void {
 
 async function main() {
   await initDb();
+  if (!process.env.R2MCP_OPENROUTER_API_KEY) {
+    console.error(`[r2mcp] ${EMBEDDINGS_DISABLED_WARNING}`);
+  }
   const transport = new StdioServerTransport();
   await server.connect(transport);
   wireParentDisconnectHandlers();

@@ -12,6 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { initDb, closeDb } from '../src/db.js';
+import { loadEnvFile } from '../src/env.js';
 import { remember } from '../src/tools/remember.js';
 import type { Tier, MemoryType, MemoryMetadata } from '../src/tools/remember.js';
 
@@ -129,6 +130,10 @@ async function migrate(memoryDir: string) {
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.dirname || '.', 'migrate.ts');
 
 if (isMain) {
+  // Load .env only on the CLI path — tests import this module, and a
+  // module-level load would leak the consumer's R2MCP_DATABASE_URL into the
+  // test process (the test-isolation guard caught exactly that, claw-8cjf.2).
+  loadEnvFile(resolve(process.env.PROJECT_ROOT || process.cwd(), '.env'));
   const memoryDir = process.argv[2] ? resolve(process.argv[2]) : null;
   if (!memoryDir) {
     console.error('Usage: tsx scripts/migrate.ts <memory-dir>');

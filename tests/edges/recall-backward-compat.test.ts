@@ -42,10 +42,11 @@ describe('recall() backward compatibility (AC9)', () => {
 
     const response = await recall({ query: 'memory', top_k: 5 });
 
-    // Snapshot of expected key set on the response (signals is the only addition)
+    // Snapshot of expected key set on the response. Additive-only fields:
+    // signals (SPEC-043), warnings (claw-8cjf.2 — present when embeddings degrade).
     const expectedKeys = new Set([
       'results', 'query', 'total_results', 'search_mode',
-      'tiers_searched', 'tokens_used', 'early_stopped', 'signals',
+      'tiers_searched', 'tokens_used', 'early_stopped', 'signals', 'warnings',
     ]);
     for (const k of Object.keys(response)) {
       expect(expectedKeys.has(k), `unexpected key ${k} in response`).toBe(true);

@@ -1,6 +1,6 @@
 import { getPool } from '../db.js';
 import { fingerprint } from '../fingerprint.js';
-import { embedText } from '../embeddings.js';
+import { embedText, embeddingWarning } from '../embeddings.js';
 import { triggerGraphRebuild } from '../graph-rebuild.js';
 import pgvector from 'pgvector';
 
@@ -37,6 +37,8 @@ export interface RememberResult {
   id?: string;
   dedup?: boolean;
   message: string;
+  /** Present only when the operation completed degraded (claw-8cjf.2). */
+  warnings?: string[];
 }
 
 export async function remember(
@@ -95,11 +97,13 @@ export async function remember(
       triggerGraphRebuild(projectRoot);
     }
 
+    const warning = embeddingWarning(embedding);
     return {
       operation,
       id: result.rows[0].id,
       dedup: false,
       message: `Memory stored with id ${result.rows[0].id}.`,
+      ...(warning ? { warnings: [warning] } : {}),
     };
   }
 
@@ -147,10 +151,12 @@ export async function remember(
       triggerGraphRebuild(projectRoot);
     }
 
+    const warning = embeddingWarning(embedding);
     return {
       operation: 'UPDATE',
       id: result.rows[0].id,
       message: `Memory ${target_id} updated.`,
+      ...(warning ? { warnings: [warning] } : {}),
     };
   }
 
@@ -170,9 +176,11 @@ export async function remember(
     }
 
     // If replacement content is provided, insert it as a new memory
+    let replacementWarning: string | null = null;
     if (content && content.trim().length > 0) {
       const fp = fingerprint(content);
       const embedding = await embedText(content);
+      replacementWarning = embeddingWarning(embedding);
 
       await pool.query(
         `INSERT INTO memories (content, tier, type, section, topics, people, date, fingerprint, embedding)
@@ -199,6 +207,7 @@ export async function remember(
       operation: 'ARCHIVE',
       id: target_id,
       message: `Memory ${target_id} archived.${content ? ' Replacement stored.' : ''}`,
+      ...(replacementWarning ? { warnings: [replacementWarning] } : {}),
     };
   }
 

@@ -14,11 +14,17 @@
  *   1 — fatal error (DB unreachable, malformed input)
  */
 
+import { resolve } from 'node:path';
 import { initDb, getPool, closeDb } from '../src/db.js';
+import { loadEnvFile } from '../src/env.js';
 import { runLint } from '../src/lint/run.js';
 import { ALL_CHECKS, type CheckName, type LintInput } from '../src/lint/types.js';
 
-interface CliArgs extends LintInput {}
+// Load .env from project root — mirrors src/index.ts (claw-8cjf.2; this CLI
+// previously loaded no environment at all and silently hit the default URL).
+loadEnvFile(resolve(process.env.PROJECT_ROOT || process.cwd(), '.env'));
+
+type CliArgs = LintInput;
 
 function isCheck(s: string): s is CheckName {
   return (ALL_CHECKS as ReadonlyArray<string>).includes(s);

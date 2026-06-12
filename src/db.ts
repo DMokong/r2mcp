@@ -8,11 +8,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let pool: pg.Pool | null = null;
 
+/**
+ * claw-8cjf.2: refuse to guess a database. The old localhost fallback sent
+ * writes to the wrong database on misconfiguration and helped nobody — the
+ * Docker default is a different URL anyway (r2mcp:r2mcp@localhost, not bare).
+ */
+export const MISSING_DATABASE_URL_MESSAGE =
+  'R2MCP_DATABASE_URL is not set. r2mcp refuses to guess a database. Set it via:\n' +
+  '  • .mcp.json: add R2MCP_DATABASE_URL to the server\'s "env" block (recommended), or\n' +
+  '  • .env in the project root: R2MCP_DATABASE_URL=postgresql://...\n' +
+  'For local Docker (docker compose up -d, then npm run setup) use:\n' +
+  '  postgresql://r2mcp:r2mcp@localhost:5432/r2mcp';
+
 export function getPool(): pg.Pool {
   if (!pool) {
-    pool = new pg.Pool({
-      connectionString: process.env.R2MCP_DATABASE_URL || 'postgresql://localhost:5432/r2mcp',
-    });
+    const connectionString = process.env.R2MCP_DATABASE_URL;
+    if (!connectionString) {
+      throw new Error(MISSING_DATABASE_URL_MESSAGE);
+    }
+    pool = new pg.Pool({ connectionString });
   }
   return pool;
 }
