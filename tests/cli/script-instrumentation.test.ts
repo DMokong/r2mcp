@@ -14,14 +14,14 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const SCRIPTS = [
-  'scripts/extract-entities.ts',
-  'scripts/compile-wiki.ts',
-  'scripts/classify-edges.ts',
+  'src/cli/extract-entities.ts',
+  'src/cli/compile-wiki.ts',
+  'src/cli/classify-edges.ts',
 ] as const;
 
 describe('claw-1ejd subprocess OTel SDK init', () => {
   for (const rel of SCRIPTS) {
-    it(`${rel} imports ../src/instrumentation.js before any other module`, () => {
+    it(`${rel} imports ../instrumentation.js before any other module`, () => {
       const path = resolve(__dirname, '../..', rel);
       const content = readFileSync(path, 'utf-8');
       const lines = content.split('\n');
@@ -45,7 +45,7 @@ describe('claw-1ejd subprocess OTel SDK init', () => {
 
       expect(firstImportLineIndex).toBeGreaterThanOrEqual(0);
       const firstCodeLine = lines[firstImportLineIndex];
-      expect(firstCodeLine).toMatch(/^import\s+['"]\.\.\/src\/instrumentation\.js['"];?\s*$/);
+      expect(firstCodeLine).toMatch(/^import\s+['"]\.\.\/instrumentation\.js['"];?\s*$/);
     });
   }
 });

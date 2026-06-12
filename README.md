@@ -334,7 +334,7 @@ Hu et al. (2026) established the hierarchical tier approach and showed that prog
 If you're moving from the ClaudeClaw-internal `memory-mcp-server`:
 
 ```bash
-R2MCP_DATABASE_URL=<your-new-url> npx tsx scripts/migrate.ts /path/to/your/memory/
+R2MCP_DATABASE_URL=<your-new-url> npx tsx src/cli/migrate.ts /path/to/your/memory/
 ```
 
 The migration script reads `preferences.md`, `project-context.md`, and `conversations.md` from the specified directory and imports them. It's idempotent — safe to re-run.

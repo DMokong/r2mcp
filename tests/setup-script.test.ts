@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateDatabaseUrl, classifySetupError, redactDatabaseUrl } from '../scripts/setup-helpers.js';
+import { validateDatabaseUrl, classifySetupError, redactDatabaseUrl } from '../src/cli/setup-helpers.js';
 
 describe('redactDatabaseUrl()', () => {
   it('replaces password with *** in a standard URL', () => {

@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 /**
  * SPEC-046 AC10 packaging-readiness gate.
  *
- * Verifies the npm package manifest includes `dist/scripts/extract-entities.js`
+ * Verifies the npm package manifest includes `dist/cli/extract-entities.js`
  * (alongside the SPEC-045 trio: classify-edges, compile-wiki, dump-edges-json).
  *
  * Implementation note: uses `npm pack --dry-run --json` and parses the file list,
@@ -19,7 +19,7 @@ import { resolve } from 'node:path';
  */
 describe('SPEC-046 AC10 build product ships extract-entities.js', () => {
   it(
-    'npm pack --dry-run manifest includes dist/scripts/extract-entities.js',
+    'npm pack --dry-run manifest includes dist/cli/extract-entities.js',
     () => {
       const cwd = resolve(__dirname, '..', '..');
       const stdout = execSync('npm pack --dry-run --json 2>/dev/null', {
@@ -34,12 +34,12 @@ describe('SPEC-046 AC10 build product ships extract-entities.js', () => {
       const paths = parsed[0]!.files.map((f) => f.path);
 
       // Primary AC10 assertion: extract-entities.js ships
-      expect(paths).toContain('dist/scripts/extract-entities.js');
+      expect(paths).toContain('dist/cli/extract-entities.js');
 
       // Companion check: the SPEC-045 trio still ships (regression guard)
-      expect(paths).toContain('dist/scripts/classify-edges.js');
-      expect(paths).toContain('dist/scripts/compile-wiki.js');
-      expect(paths).toContain('dist/scripts/dump-edges-json.js');
+      expect(paths).toContain('dist/cli/classify-edges.js');
+      expect(paths).toContain('dist/cli/compile-wiki.js');
+      expect(paths).toContain('dist/cli/dump-edges-json.js');
     },
     30_000,
   );

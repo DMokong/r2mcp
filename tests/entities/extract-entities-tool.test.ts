@@ -67,7 +67,7 @@ describe('extract_entities MCP tool — subprocess delegation', () => {
     expect(result.entities_created).toBe(2);
     expect(result.links_created).toBe(6);
     expect(['tsx', 'node']).toContain(capturedArgs?.[0]);
-    expect(capturedArgs?.[1]).toMatch(/\/scripts\/extract-entities\.(ts|js)$/);
+    expect(capturedArgs?.[1]).toMatch(/\/cli\/extract-entities\.(ts|js)$/);
     expect(capturedArgs).toContain('--since-days=7');
     expect(capturedArgs).toContain('--max-cost=0.5');
     expect(capturedArgs).toContain('--provider=claude-code');

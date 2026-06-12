@@ -2,7 +2,7 @@
 // OTel instrumentation MUST be imported first — before any other module —
 // so OTEL_TRACEPARENT propagation has an SDK to attach the parent context to
 // (claw-1ejd). Without this import, propagation.extract() is a no-op.
-import '../src/instrumentation.js';
+import '../instrumentation.js';
 
 /**
  * SPEC-044 Section B — wiki compile CLI driver.
@@ -24,17 +24,17 @@ import '../src/instrumentation.js';
 import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { initDb, getPool, closeDb } from '../src/db.js';
+import { initDb, getPool, closeDb } from '../db.js';
 import {
   selectProvider,
   isProviderName,
   ProviderUnavailableError,
   type ProviderName,
-} from '../src/providers/index.js';
-import { runCompile } from '../src/compiler/run.js';
-import type { EdgeForCompile, MemoryForCompile, Tier } from '../src/compiler/types.js';
-import { withToolSpan } from '../src/telemetry.js';
-import { loadEnvFile } from '../src/env.js';
+} from '../providers/index.js';
+import { runCompile } from '../compiler/run.js';
+import type { EdgeForCompile, MemoryForCompile, Tier } from '../compiler/types.js';
+import { withToolSpan } from '../telemetry.js';
+import { loadEnvFile } from '../env.js';
 
 interface CliArgs {
   tier?: Tier;
@@ -93,8 +93,13 @@ async function loadMemoriesFromDb(scope: CliArgs): Promise<MemoryForCompile[]> {
     where += ` AND $${params.length} = ANY(topics)`;
   }
   const rows = await pool.query<{
-    id: string; tier: Tier; type: string; content: string;
-    topics: string[]; people: string[]; created_at: string;
+    id: string;
+    tier: Tier;
+    type: string;
+    content: string;
+    topics: string[];
+    people: string[];
+    created_at: string;
   }>(
     `SELECT id, tier, type, content, topics, people, created_at::text AS created_at
      FROM memories WHERE ${where}
@@ -102,8 +107,12 @@ async function loadMemoriesFromDb(scope: CliArgs): Promise<MemoryForCompile[]> {
     params,
   );
   const memories: MemoryForCompile[] = rows.rows.map((r) => ({
-    id: r.id, tier: r.tier, type: r.type,
-    content: r.content, topics: r.topics ?? [], people: r.people ?? [],
+    id: r.id,
+    tier: r.tier,
+    type: r.type,
+    content: r.content,
+    topics: r.topics ?? [],
+    people: r.people ?? [],
     created_at: r.created_at,
   }));
 
@@ -112,8 +121,11 @@ async function loadMemoriesFromDb(scope: CliArgs): Promise<MemoryForCompile[]> {
   const ids = memories.map((m) => m.id);
   if (ids.length > 0) {
     const edgeRows = await pool.query<{
-      from_memory_id: string; to_memory_id: string; relation: string;
-      rationale: string; confidence: number;
+      from_memory_id: string;
+      to_memory_id: string;
+      relation: string;
+      rationale: string;
+      confidence: number;
     }>(
       `SELECT from_memory_id, to_memory_id, relation, rationale, confidence::float
        FROM memory_edges
@@ -169,26 +181,30 @@ async function main() {
   const summary = await withToolSpan(
     'compile_wiki',
     {
-      run_id: runId, dry_run: args.dryRun, max_cost_usd: args.maxCostUsd,
-      provider: provider.name, scope: args.tier ?? args.topic ?? 'all',
+      run_id: runId,
+      dry_run: args.dryRun,
+      max_cost_usd: args.maxCostUsd,
+      provider: provider.name,
+      scope: args.tier ?? args.topic ?? 'all',
     },
-    () => runCompile(
-      {
-        tier: args.tier,
-        all: args.all,
-        topic: args.topic,
-        dryRun: args.dryRun,
-        maxCostUsd: args.maxCostUsd,
-        runId,
-        startedAt,
-        sourceGitSha,
-        compiledDir,
-      },
-      {
-        provider,
-        loadMemories: () => loadMemoriesFromDb(args),
-      },
-    ),
+    () =>
+      runCompile(
+        {
+          tier: args.tier,
+          all: args.all,
+          topic: args.topic,
+          dryRun: args.dryRun,
+          maxCostUsd: args.maxCostUsd,
+          runId,
+          startedAt,
+          sourceGitSha,
+          compiledDir,
+        },
+        {
+          provider,
+          loadMemories: () => loadMemoriesFromDb(args),
+        },
+      ),
   );
 
   process.stdout.write(JSON.stringify(summary, null, 2) + '\n');

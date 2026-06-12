@@ -15,10 +15,10 @@
  */
 
 import { resolve } from 'node:path';
-import { initDb, getPool, closeDb } from '../src/db.js';
-import { loadEnvFile } from '../src/env.js';
-import { runLint } from '../src/lint/run.js';
-import { ALL_CHECKS, type CheckName, type LintInput } from '../src/lint/types.js';
+import { initDb, getPool, closeDb } from '../db.js';
+import { loadEnvFile } from '../env.js';
+import { runLint } from '../lint/run.js';
+import { ALL_CHECKS, type CheckName, type LintInput } from '../lint/types.js';
 
 // Load .env from project root — mirrors src/index.ts (claw-8cjf.2; this CLI
 // previously loaded no environment at all and silently hit the default URL).

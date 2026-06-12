@@ -1,0 +1,66 @@
+# Changelog
+
+All notable changes to r2mcp. Versions follow [semver](https://semver.org/);
+entries reference the internal spec numbers that shipped them.
+
+## [0.2.0] — 2026-06-13
+
+First release packaged for use beyond the original workspace.
+
+### Added
+
+- **npm bins**: `r2mcp` (the MCP server) and `r2mcp-setup` (schema provisioner) —
+  `.mcp.json` can now use `npx -y r2mcp` instead of an absolute dist path.
+- **MCP server instructions** sent in the initialize response — a fresh project's
+  agent learns the recall-at-start / remember-as-you-go loop with zero setup.
+- **`warnings[]` on `remember`/`recall`** when embeddings are unavailable,
+  distinguishing *disabled* (no `R2MCP_OPENROUTER_API_KEY`) from *failed*.
+- **Fail-fast configuration**: the server and `npm run setup` refuse to start
+  without `R2MCP_DATABASE_URL` (previously defaulted silently to localhost);
+  startup logs a warning when embeddings are off.
+- **`extract_entities` tool + entity-scoped `recall`** (SPEC-046): light entity
+  extraction (project/person/tool/decision) with alias merging and cost caps.
+- **`next_tools[]` breadcrumbs** on every tool response (SPEC-047): context-aware
+  follow-up suggestions, capped at 3.
+- **MCP-only operation** (SPEC-045): `classify` and `dump_edges_sidecar` promoted
+  to MCP tools; subprocess spawning centralized via `resolveCliCommand`;
+  `R2MCP_CLAUDE_BIN` escape hatch for sanitized-PATH hosts (now documented, and
+  named in ENOENT spawn errors).
+- **MIT LICENSE**, engines field, repository metadata, this changelog.
+
+### Changed
+
+- **Single-rootDir build**: CLI drivers moved from `scripts/` to `src/cli/`;
+  the dual compile tree (`dist/` + `dist/src/`, 43 duplicate files) is gone and
+  `schema.sql` is copied once. `npm run` script names are unchanged.
+- **README onboarding overhaul**: Supabase **Session pooler** is the recommended
+  connection (the Direct connection is IPv6-only without a paid add-on; setup
+  classifies `ENETUNREACH` accordingly); `.mcp.json` examples use `${VAR}`
+  expansion with a secret-hygiene warning; the bundled `/remember` skill install
+  corrected to `.claude/skills/`; new Configuration table and Troubleshooting
+  section.
+
+### Fixed
+
+- **`.env` loader regex could not match any `R2MCP_*` key** (the digit excluded
+  by `[A-Z_]+`) — every documented fresh-clone setup silently fell back to
+  localhost. All five hand-rolled loaders replaced by a shared `loadEnvFile()`.
+- CLI drivers load `.env` only on their CLI entry path, never at module import
+  (a module-level load leaked the consumer's DB URL into test processes).
+- `lint:memory` previously loaded no environment at all.
+
+## [0.1.0] — 2026-05-09
+
+Initial extraction from the ClaudeClaw workspace (SPEC-041 through SPEC-044).
+
+- 9 MCP tools: `remember`, `recall`, `search`, `meditate`, `reject`, `stats`,
+  `compile`, `lint`, `classify` over PostgreSQL + pgvector (Docker or Supabase
+  free tier).
+- 3-tier memory (preferences / project-context / conversations) with semantic +
+  full-text hybrid retrieval, MMR diversity, progressive tier search,
+  token-budget retrieval (Recall v2).
+- Typed memory edges (SPEC-043) surfaced as `signals[]` on recall.
+- Wiki mode (SPEC-044): regenerable compiled views, SQL-only lint
+  (contradictions / stale / orphans / drift / superseded_unflagged).
+- Multi-provider LLM layer: claude-code (Max plan, $0/call), Anthropic API,
+  OpenRouter — batch jobs only; the MCP server itself never makes LLM calls.

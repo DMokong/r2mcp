@@ -56,7 +56,7 @@ describe('classify() MCP tool — subprocess delegation', () => {
     expect(result.run_id).toBe('run-classify-1');
     expect(result.edges_written).toBe(9);
     expect(['tsx', 'node']).toContain(capturedArgs?.[0]);
-    expect(capturedArgs?.[1]).toMatch(/\/scripts\/classify-edges\.(ts|js)$/);
+    expect(capturedArgs?.[1]).toMatch(/\/cli\/classify-edges\.(ts|js)$/);
     expect(capturedArgs).toContain('--since=7d');
     expect(capturedArgs).toContain('--max-cost=0.5');
     expect(capturedArgs).toContain('--provider=claude-code');

@@ -2,7 +2,7 @@
 // OTel instrumentation MUST be imported first — before any other module —
 // so OTEL_TRACEPARENT propagation has an SDK to attach the parent context to
 // (claw-1ejd). Without this import, propagation.extract() is a no-op.
-import '../src/instrumentation.js';
+import '../instrumentation.js';
 
 /**
  * SPEC-046 entity extractor CLI.
@@ -31,15 +31,15 @@ import '../src/instrumentation.js';
 
 import { resolve } from 'node:path';
 import { context, propagation, type Context } from '@opentelemetry/api';
-import { initDb, getPool, closeDb } from '../src/db.js';
-import { runExtractor } from '../src/entities/extractor.js';
+import { initDb, getPool, closeDb } from '../db.js';
+import { runExtractor } from '../entities/extractor.js';
 import {
   selectProvider,
   isProviderName,
   ProviderUnavailableError,
   type ProviderName,
-} from '../src/providers/index.js';
-import { loadEnvFile } from '../src/env.js';
+} from '../providers/index.js';
+import { loadEnvFile } from '../env.js';
 
 // Load .env from project root — launchd-spawned subprocesses don't inherit
 // shell env, so OTEL_ENABLED + DB URL + provider keys must be loaded here
@@ -118,9 +118,7 @@ export function parseArgs(argv: string[]): CliArgs {
     }
   }
   if (args.full && args.sinceDays !== undefined) {
-    throw new UsageError(
-      'Error: --full and --since-days are mutually exclusive',
-    );
+    throw new UsageError('Error: --full and --since-days are mutually exclusive');
   }
   return args;
 }

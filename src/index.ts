@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // OTel instrumentation MUST be imported first — before any other module
 import './instrumentation.js';
 
@@ -35,7 +36,7 @@ loadEnvFile(resolve(PROJECT_ROOT, '.env'));
 const server = new McpServer(
   {
     name: 'r2mcp',
-    version: '0.1.0',
+    version: '0.2.0',
   },
   // Sent in the initialize response; Claude Code loads this into the agent's
   // context at session start (claw-8cjf.8 — first-session guidance).

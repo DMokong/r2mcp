@@ -11,10 +11,10 @@
 
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { initDb, closeDb } from '../src/db.js';
-import { loadEnvFile } from '../src/env.js';
-import { remember } from '../src/tools/remember.js';
-import type { Tier, MemoryType, MemoryMetadata } from '../src/tools/remember.js';
+import { initDb, closeDb } from '../db.js';
+import { loadEnvFile } from '../env.js';
+import { remember } from '../tools/remember.js';
+import type { Tier, MemoryType, MemoryMetadata } from '../tools/remember.js';
 
 export interface ParsedEntry {
   content: string;
@@ -45,7 +45,11 @@ function parseInlineMetadata(text: string): Partial<MemoryMetadata> {
   return meta;
 }
 
-export function parseMarkdownEntries(content: string, tier: Tier, defaultType: MemoryType): ParsedEntry[] {
+export function parseMarkdownEntries(
+  content: string,
+  tier: Tier,
+  defaultType: MemoryType,
+): ParsedEntry[] {
   const lines = content.split('\n');
   const entries: ParsedEntry[] = [];
   let currentSection: string | undefined;
@@ -71,16 +75,19 @@ export function parseMarkdownEntries(content: string, tier: Tier, defaultType: M
   for (const line of lines) {
     if (/^# /.test(line)) continue;
     if (/^## /.test(line)) {
-      flushEntry(); currentEntry = null;
+      flushEntry();
+      currentEntry = null;
       currentSection = line.replace(/^##\s*/, '').trim();
       continue;
     }
     if (/^- /.test(line)) {
-      flushEntry(); currentEntry = [line.slice(2)];
+      flushEntry();
+      currentEntry = [line.slice(2)];
       continue;
     }
     if (currentEntry !== null && /^\s+/.test(line)) {
-      currentEntry.push(line); continue;
+      currentEntry.push(line);
+      continue;
     }
     if (line.trim() === '') continue;
   }
@@ -90,7 +97,9 @@ export function parseMarkdownEntries(content: string, tier: Tier, defaultType: M
 
 async function migrate(memoryDir: string) {
   await initDb();
-  let totalAdded = 0, totalDedup = 0, totalErrors = 0;
+  let totalAdded = 0,
+    totalDedup = 0,
+    totalErrors = 0;
 
   for (const { file, tier, defaultType } of TIER_FILES) {
     const filePath = join(memoryDir, file);
@@ -109,7 +118,12 @@ async function migrate(memoryDir: string) {
       const entry = entries[i];
       const preview = entry.content.slice(0, 60).replace(/\n/g, ' ');
       try {
-        const result = await remember({ operation: 'ADD', tier: entry.tier, content: entry.content, metadata: entry.metadata });
+        const result = await remember({
+          operation: 'ADD',
+          tier: entry.tier,
+          content: entry.content,
+          metadata: entry.metadata,
+        });
         if (result.dedup) {
           console.log(`  [${i + 1}/${entries.length}] Dedup: "${preview}..."`);
           totalDedup++;
@@ -118,16 +132,21 @@ async function migrate(memoryDir: string) {
           totalAdded++;
         }
       } catch (err) {
-        console.error(`  [${i + 1}/${entries.length}] Error: "${preview}..." — ${(err as Error).message}`);
+        console.error(
+          `  [${i + 1}/${entries.length}] Error: "${preview}..." — ${(err as Error).message}`,
+        );
         totalErrors++;
       }
     }
   }
-  console.log(`\nMigration complete: ${totalAdded} added, ${totalDedup} deduplicated, ${totalErrors} errors`);
+  console.log(
+    `\nMigration complete: ${totalAdded} added, ${totalDedup} deduplicated, ${totalErrors} errors`,
+  );
   await closeDb();
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.dirname || '.', 'migrate.ts');
+const isMain =
+  process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.dirname || '.', 'migrate.ts');
 
 if (isMain) {
   // Load .env only on the CLI path — tests import this module, and a
@@ -137,7 +156,9 @@ if (isMain) {
   const memoryDir = process.argv[2] ? resolve(process.argv[2]) : null;
   if (!memoryDir) {
     console.error('Usage: tsx scripts/migrate.ts <memory-dir>');
-    console.error('  <memory-dir> must contain preferences.md, project-context.md, conversations.md');
+    console.error(
+      '  <memory-dir> must contain preferences.md, project-context.md, conversations.md',
+    );
     process.exit(1);
   }
   migrate(memoryDir).catch((err) => {

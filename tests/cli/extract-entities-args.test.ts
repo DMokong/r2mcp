@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { parseArgs, UsageError } from '../../scripts/extract-entities.js';
+import { parseArgs, UsageError } from '../../src/cli/extract-entities.js';
 
 describe('SPEC-046 R6/AC8 extract-entities CLI argv parser', () => {
   it('throws UsageError(exitCode=2) for --full together with --since-days', () => {
@@ -67,7 +67,7 @@ describe('SPEC-046 R6/AC8 extract-entities CLI argv parser', () => {
   // executable-level behavior the spec requires (AC8 mutex enforcement at the
   // OS exit-code level, not just at the UsageError class).
   it('AC8 (subprocess): CLI exits 2 with descriptive stderr for --full + --since-days=7', () => {
-    const scriptPath = resolve(__dirname, '../../scripts/extract-entities.ts');
+    const scriptPath = resolve(__dirname, '../../src/cli/extract-entities.ts');
     // Use a clean env: no DB URL means the script would fail at initDb() if it
     // got past arg parsing — but parseArgs throws first, so we never reach DB.
     // We do NOT need OTEL_ENABLED off because instrumentation is no-op when

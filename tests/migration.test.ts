@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { setupTestDb, teardownTestDb } from './setup.js';
-import { parseMarkdownEntries } from '../scripts/migrate.js';
+import { parseMarkdownEntries } from '../src/cli/migrate.js';
 import { remember } from '../src/tools/remember.js';
 import type pg from 'pg';
 

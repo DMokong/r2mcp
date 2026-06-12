@@ -2,8 +2,8 @@
  * SPEC-045: shared subprocess command resolver for r2mcp's CLI tools.
  *
  * Returns {bin, args} for spawning a script under both:
- *   - dev mode: this file is .ts (via tsx) → spawn tsx <project>/scripts/<name>.ts
- *   - prod mode: this file is .js (compiled to dist/) → spawn node <project>/dist/scripts/<name>.js
+ *   - dev mode: this file is .ts (via tsx) → spawn tsx <project>/src/cli/<name>.ts
+ *   - prod mode: this file is .js (compiled to dist/) → spawn node <project>/dist/cli/<name>.js
  *
  * Detection uses the file extension at import.meta.url. This is automatic,
  * zero-config, and authoritative for tsx + tsc workflows. If r2mcp ever
@@ -44,15 +44,15 @@ export function resolveCliCommandForUrl(
   const dir = dirname(thisFile);
 
   if (isDev) {
-    // dev: <root>/src/tools/spawn-cli.ts → <root>/scripts/<name>.ts
+    // dev: <root>/src/tools/spawn-cli.ts → <root>/src/cli/<name>.ts
     return {
       bin: 'tsx',
-      args: [resolve(dir, '..', '..', 'scripts', `${scriptName}.ts`)],
+      args: [resolve(dir, '..', 'cli', `${scriptName}.ts`)],
     };
   }
-  // prod: <root>/dist/tools/spawn-cli.js → <root>/dist/scripts/<name>.js
+  // prod: <root>/dist/tools/spawn-cli.js → <root>/dist/cli/<name>.js
   return {
     bin: 'node',
-    args: [resolve(dir, '..', 'scripts', `${scriptName}.js`)],
+    args: [resolve(dir, '..', 'cli', `${scriptName}.js`)],
   };
 }

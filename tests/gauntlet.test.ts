@@ -17,7 +17,7 @@ import { search } from '../src/tools/search.js';
 import { stats } from '../src/tools/stats.js';
 import { reject } from '../src/tools/reject.js';
 import { meditate } from '../src/tools/meditate.js';
-import { parseMarkdownEntries } from '../scripts/migrate.js';
+import { parseMarkdownEntries } from '../src/cli/migrate.js';
 import type pg from 'pg';
 
 let pool: pg.Pool;

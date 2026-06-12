@@ -2,7 +2,7 @@
 // OTel instrumentation MUST be imported first — before any other module —
 // so OTEL_TRACEPARENT propagation has an SDK to attach the parent context to
 // (claw-1ejd). Without this import, propagation.extract() is a no-op.
-import '../src/instrumentation.js';
+import '../instrumentation.js';
 
 /**
  * SPEC-043 / SPEC-044 edge classifier CLI.
@@ -29,21 +29,21 @@ import '../src/instrumentation.js';
 
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import { initDb, getPool, closeDb } from '../src/db.js';
-import { findCandidatePairs } from '../src/edges/candidate-pairs.js';
-import { stage1HaikuFilter } from '../src/edges/stage1-haiku.js';
-import { stage2OpusClassify, type MemoryForClassify } from '../src/edges/stage2-opus.js';
-import { StateStore, RunSummaryWriter } from '../src/edges/state.js';
-import { runClassifier } from '../src/edges/classifier.js';
-import type { EdgeRelation } from '../src/edges/types.js';
-import { withToolSpan } from '../src/telemetry.js';
+import { initDb, getPool, closeDb } from '../db.js';
+import { findCandidatePairs } from '../edges/candidate-pairs.js';
+import { stage1HaikuFilter } from '../edges/stage1-haiku.js';
+import { stage2OpusClassify, type MemoryForClassify } from '../edges/stage2-opus.js';
+import { StateStore, RunSummaryWriter } from '../edges/state.js';
+import { runClassifier } from '../edges/classifier.js';
+import type { EdgeRelation } from '../edges/types.js';
+import { withToolSpan } from '../telemetry.js';
 import {
   selectProvider,
   isProviderName,
   ProviderUnavailableError,
   type ProviderName,
-} from '../src/providers/index.js';
-import { loadEnvFile } from '../src/env.js';
+} from '../providers/index.js';
+import { loadEnvFile } from '../env.js';
 
 // Load .env from project root — launchd-spawned subprocesses don't inherit
 // shell env, so OTEL_ENABLED + DB URL + provider keys must be loaded here
@@ -111,44 +111,45 @@ async function main() {
       max_cost_usd: args.maxCostUsd,
       provider: provider?.name ?? 'dry-run',
     },
-    () => runClassifier(
-      { runId, maxCostUsd: args.maxCostUsd, dryRun: args.dryRun, sinceDays: args.sinceDays },
-      {
-        classifierVersion: CLASSIFIER_VERSION,
-        state,
-        summaryWriter,
-        concurrencyLimit: provider?.concurrencyLimit ?? 1,
-        providerName: provider?.name,
-        findCandidatePairs: (opts) => findCandidatePairs(pool, opts),
-        fetchMemoryById: async (id) => {
-          const r = await pool.query<MemoryForClassify>(
-            'SELECT id, content, type FROM memories WHERE id = $1',
-            [id],
-          );
-          return r.rows[0] ?? null;
-        },
-        stage1Filter: (pair) => stage1HaikuFilter(provider!, pair),
-        stage2Classify: (pair) => stage2OpusClassify(provider!, pair),
-        insertEdge: async (fromId, toId, relation, confidence, rationale, version) => {
-          const res = await pool.query<{ id: string }>(
-            `INSERT INTO memory_edges (from_memory_id, to_memory_id, relation, confidence, rationale, classifier_version)
+    () =>
+      runClassifier(
+        { runId, maxCostUsd: args.maxCostUsd, dryRun: args.dryRun, sinceDays: args.sinceDays },
+        {
+          classifierVersion: CLASSIFIER_VERSION,
+          state,
+          summaryWriter,
+          concurrencyLimit: provider?.concurrencyLimit ?? 1,
+          providerName: provider?.name,
+          findCandidatePairs: (opts) => findCandidatePairs(pool, opts),
+          fetchMemoryById: async (id) => {
+            const r = await pool.query<MemoryForClassify>(
+              'SELECT id, content, type FROM memories WHERE id = $1',
+              [id],
+            );
+            return r.rows[0] ?? null;
+          },
+          stage1Filter: (pair) => stage1HaikuFilter(provider!, pair),
+          stage2Classify: (pair) => stage2OpusClassify(provider!, pair),
+          insertEdge: async (fromId, toId, relation, confidence, rationale, version) => {
+            const res = await pool.query<{ id: string }>(
+              `INSERT INTO memory_edges (from_memory_id, to_memory_id, relation, confidence, rationale, classifier_version)
              VALUES ($1, $2, $3, $4, $5, $6)
              ON CONFLICT (from_memory_id, to_memory_id, relation) DO UPDATE
                SET confidence = EXCLUDED.confidence,
                    rationale = EXCLUDED.rationale,
                    updated_at = NOW()
              RETURNING id`,
-            [fromId, toId, relation as EdgeRelation, confidence, rationale, version],
-          );
-          return res.rows[0].id;
+              [fromId, toId, relation as EdgeRelation, confidence, rationale, version],
+            );
+            return res.rows[0].id;
+          },
+          estimateCost: async (pairs) => {
+            const stage1 = pairs.length * 0.0005;
+            const stage2 = pairs.length * 0.2 * 0.018;
+            return stage1 + stage2;
+          },
         },
-        estimateCost: async (pairs) => {
-          const stage1 = pairs.length * 0.0005;
-          const stage2 = pairs.length * 0.20 * 0.018;
-          return stage1 + stage2;
-        },
-      },
-    ),
+      ),
   );
 
   process.stdout.write(JSON.stringify(summary, null, 2) + '\n');

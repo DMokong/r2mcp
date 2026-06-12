@@ -1,6 +1,6 @@
 {
   "name": "r2mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Persistent semantic memory layer for Claude Code — PostgreSQL + pgvector + OpenRouter embeddings",
   "license": "MIT",
   "type": "module",
@@ -8,27 +8,26 @@
   "files": [
     "dist/",
     "skills/",
-    "scripts/setup.ts",
-    "scripts/migrate.ts",
-    "src/schema.sql",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.scripts.json && cp src/schema.sql dist/ && cp src/schema.sql dist/src/",
+    "build": "tsc && cp src/schema.sql dist/",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "setup": "tsx scripts/setup.ts",
-    "edges:classify": "tsx scripts/classify-edges.ts",
-    "entities:extract": "tsx scripts/extract-entities.ts",
-    "compile-wiki": "tsx scripts/compile-wiki.ts",
-    "lint:memory": "tsx scripts/lint-memory.ts",
-    "migrate": "tsx scripts/migrate.ts",
+    "setup": "tsx src/cli/setup.ts",
+    "edges:classify": "tsx src/cli/classify-edges.ts",
+    "entities:extract": "tsx src/cli/extract-entities.ts",
+    "compile-wiki": "tsx src/cli/compile-wiki.ts",
+    "lint:memory": "tsx src/cli/lint-memory.ts",
+    "migrate": "tsx src/cli/migrate.ts",
     "gauntlet": "vitest run tests/gauntlet.test.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
@@ -58,5 +57,30 @@
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
-  }
+  },
+  "types": "dist/index.d.ts",
+  "bin": {
+    "r2mcp": "dist/index.js",
+    "r2mcp-setup": "dist/cli/setup.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DMokong/r2mcp.git"
+  },
+  "homepage": "https://github.com/DMokong/r2mcp#readme",
+  "bugs": {
+    "url": "https://github.com/DMokong/r2mcp/issues"
+  },
+  "author": "Dustin Cheng",
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "memory",
+    "pgvector",
+    "semantic-search",
+    "model-context-protocol"
+  ]
 }

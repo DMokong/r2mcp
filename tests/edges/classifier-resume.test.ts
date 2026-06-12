@@ -25,7 +25,7 @@ liveOnly('classifier resume + cost cap (AC6, live)', () => {
     // First run — deliberately tiny cap
     const first = spawnSync(
       'npx',
-      ['tsx', 'scripts/classify-edges.ts', '--max-cost=0.05', '--resume=test-run-ac6a'],
+      ['tsx', 'src/cli/classify-edges.ts', '--max-cost=0.05', '--resume=test-run-ac6a'],
       { cwd: process.cwd(), env, encoding: 'utf-8' },
     );
     expect(first.status).toBe(0);
@@ -38,7 +38,7 @@ liveOnly('classifier resume + cost cap (AC6, live)', () => {
     // Resume with a large cap
     const second = spawnSync(
       'npx',
-      ['tsx', 'scripts/classify-edges.ts', '--max-cost=10', '--resume=test-run-ac6a'],
+      ['tsx', 'src/cli/classify-edges.ts', '--max-cost=10', '--resume=test-run-ac6a'],
       { cwd: process.cwd(), env, encoding: 'utf-8' },
     );
     expect(second.status).toBe(0);

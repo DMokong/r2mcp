@@ -25,7 +25,7 @@ describe('classifier --dry-run (AC4)', () => {
 
     const result = spawnSync(
       'npx',
-      ['tsx', 'scripts/classify-edges.ts', '--dry-run', '--resume=test-dryrun-ac4'],
+      ['tsx', 'src/cli/classify-edges.ts', '--dry-run', '--resume=test-dryrun-ac4'],
       {
         cwd: process.cwd(),
         env: {

@@ -54,7 +54,7 @@ describe('compile() MCP tool — subprocess delegation', () => {
     expect(result.run_id).toBe('run-1');
     expect(result.provider).toBe('claude-code');
     expect(['tsx', 'node']).toContain(capturedArgs?.[0]);
-    expect(capturedArgs?.[1]).toMatch(/\/scripts\/compile-wiki\.(ts|js)$/);
+    expect(capturedArgs?.[1]).toMatch(/\/cli\/compile-wiki\.(ts|js)$/);
     expect(capturedArgs).toContain('--tier=preferences');
   });
 

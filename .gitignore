@@ -7,3 +7,7 @@ coverage/
 
 # SPEC-044: compile() output is a regenerable artifact (B.R2)
 memory/compiled/
+
+# classifier/extractor runtime state and local benchmarks
+data/
+benchmarks/

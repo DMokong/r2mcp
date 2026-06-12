@@ -13,13 +13,13 @@ export function validateDatabaseUrl(url: string): void {
   if (parsed.port === '6543') {
     throw new Error(
       `Transaction-pooler URL detected (port 6543).\n` +
-      `Schema setup needs a session-capable connection — the transaction pooler does not\n` +
-      `support prepared statements or DDL. Use the Session pooler (port 5432) instead:\n` +
-      `\n` +
-      `  Supabase Dashboard → Connect (top of page) → Session pooler\n` +
-      `\n` +
-      `It looks like: postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres\n` +
-      `(A Direct connection also works if your network has IPv6 or the IPv4 add-on.)`
+        `Schema setup needs a session-capable connection — the transaction pooler does not\n` +
+        `support prepared statements or DDL. Use the Session pooler (port 5432) instead:\n` +
+        `\n` +
+        `  Supabase Dashboard → Connect (top of page) → Session pooler\n` +
+        `\n` +
+        `It looks like: postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres\n` +
+        `(A Direct connection also works if your network has IPv6 or the IPv4 add-on.)`,
     );
   }
 }
@@ -33,7 +33,11 @@ export function classifySetupError(err: Error, redactedUrl: string): SetupErrorC
   const msg = err.message.toLowerCase();
   const code = (err as NodeJS.ErrnoException).code;
 
-  if (code === 'ECONNREFUSED' || msg.includes('connect econnrefused') || msg.includes('connection refused')) {
+  if (
+    code === 'ECONNREFUSED' ||
+    msg.includes('connect econnrefused') ||
+    msg.includes('connection refused')
+  ) {
     return {
       cause: `Connection refused — could not reach ${redactedUrl}`,
       fix: 'Check that PostgreSQL is running (Docker: docker compose up -d) and that the host/port in DATABASE_URL are correct',
@@ -74,8 +78,10 @@ export function classifySetupError(err: Error, redactedUrl: string): SetupErrorC
   }
 
   if (
-    code === 'ETIMEDOUT' || code === 'ENOTFOUND' ||
-    msg.includes('connect etimedout') || msg.includes('getaddrinfo')
+    code === 'ETIMEDOUT' ||
+    code === 'ENOTFOUND' ||
+    msg.includes('connect etimedout') ||
+    msg.includes('getaddrinfo')
   ) {
     return {
       cause: `Could not reach ${redactedUrl}`,

@@ -7,7 +7,7 @@
  *   tsx scripts/dump-edges-json.ts --out-dir=memory/compiled
  */
 import { resolve } from 'node:path';
-import { dumpEdgesJson } from '../src/tools/dump-edges-sidecar.js';
+import { dumpEdgesJson } from '../tools/dump-edges-sidecar.js';
 
 const DEFAULT_DIR = 'memory/compiled';
 
@@ -15,7 +15,9 @@ async function main() {
   const dirArg = process.argv.find((a) => a.startsWith('--out-dir='));
   const outDir = resolve(dirArg ? dirArg.split('=')[1] : DEFAULT_DIR);
   const result = await dumpEdgesJson(outDir);
-  console.log(`Wrote ${result.edges_count} edges + ${result.memories_count} memories to ${result.out_dir}/`);
+  console.log(
+    `Wrote ${result.edges_count} edges + ${result.memories_count} memories to ${result.out_dir}/`,
+  );
 }
 
 main().catch((e) => {

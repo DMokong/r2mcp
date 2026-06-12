@@ -24,7 +24,7 @@ liveOnly('classifier discrimination (AC3, live)', () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'edges-ac3-'));
     const result = spawnSync(
       'npx',
-      ['tsx', 'scripts/classify-edges.ts', '--max-cost=0.50', '--resume=test-run-ac3'],
+      ['tsx', 'src/cli/classify-edges.ts', '--max-cost=0.50', '--resume=test-run-ac3'],
       { cwd: process.cwd(), env: { ...process.env, R2MCP_EDGE_DATA_DIR: dataDir }, encoding: 'utf-8' },
     );
     expect(result.status).toBe(0);

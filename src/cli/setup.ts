@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * r2mcp setup script — idempotent schema provisioner.
  *
@@ -18,13 +19,13 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateDatabaseUrl, classifySetupError, redactDatabaseUrl } from './setup-helpers.js';
-import { loadEnvFile } from '../src/env.js';
-import { MISSING_DATABASE_URL_MESSAGE } from '../src/db.js';
+import { loadEnvFile } from '../env.js';
+import { MISSING_DATABASE_URL_MESSAGE } from '../db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Load .env from project root
-loadEnvFile(resolve(__dirname, '..', '.env'));
+loadEnvFile(resolve(__dirname, '..', '..', '.env'));
 
 // claw-8cjf.2: fail fast instead of defaulting to a credential-less localhost
 // URL that matches neither the Docker compose setup nor any hosted option.
@@ -61,7 +62,7 @@ async function setup() {
     await pgvector.registerTypes(client);
 
     // 3. Run schema.sql
-    const schemaPath = resolve(__dirname, '..', 'src', 'schema.sql');
+    const schemaPath = resolve(__dirname, '..', 'schema.sql');
     const schema = readFileSync(schemaPath, 'utf-8');
     console.log('→ Applying schema.sql...');
     await client.query(schema);
@@ -86,11 +87,12 @@ async function setup() {
     console.log('     "memory": {');
     console.log('       "command": "node",');
     console.log('       "args": ["<path-to-r2mcp>/dist/index.js"],');
-    console.log('       "env": { "R2MCP_DATABASE_URL": "<your-url>", "R2MCP_OPENROUTER_API_KEY": "<your-key>" }');
+    console.log(
+      '       "env": { "R2MCP_DATABASE_URL": "<your-url>", "R2MCP_OPENROUTER_API_KEY": "<your-key>" }',
+    );
     console.log('     }');
     console.log('  2. Build: npm run build');
     console.log('  3. Restart Claude Code to pick up the new MCP server');
-
   } finally {
     client.release();
     await pool.end();

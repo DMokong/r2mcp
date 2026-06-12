@@ -15,7 +15,7 @@ describe('resolveCliCommand', () => {
     const result = resolveCliCommandForUrl('classify-edges', fakeUrl);
     expect(result.bin).toBe('tsx');
     expect(result.args).toHaveLength(1);
-    expect(result.args[0]).toBe('/abs/r2mcp/scripts/classify-edges.ts');
+    expect(result.args[0]).toBe('/abs/r2mcp/src/cli/classify-edges.ts');
   });
 
   it('returns node + .js in prod mode (dist-tree import.meta.url)', () => {
@@ -23,15 +23,15 @@ describe('resolveCliCommand', () => {
     const result = resolveCliCommandForUrl('classify-edges', fakeUrl);
     expect(result.bin).toBe('node');
     expect(result.args).toHaveLength(1);
-    expect(result.args[0]).toBe('/abs/install/node_modules/r2mcp/dist/scripts/classify-edges.js');
+    expect(result.args[0]).toBe('/abs/install/node_modules/r2mcp/dist/cli/classify-edges.js');
   });
 
   it('handles compile-wiki the same way (helper is script-name-agnostic)', () => {
     const dev = resolveCliCommandForUrl('compile-wiki', 'file:///r/src/tools/spawn-cli.ts');
     const prod = resolveCliCommandForUrl('compile-wiki', 'file:///r/dist/tools/spawn-cli.js');
     expect(dev.bin).toBe('tsx');
-    expect(dev.args[0]).toMatch(/\/scripts\/compile-wiki\.ts$/);
+    expect(dev.args[0]).toMatch(/\/src\/cli\/compile-wiki\.ts$/);
     expect(prod.bin).toBe('node');
-    expect(prod.args[0]).toMatch(/\/dist\/scripts\/compile-wiki\.js$/);
+    expect(prod.args[0]).toMatch(/\/dist\/cli\/compile-wiki\.js$/);
   });
 });

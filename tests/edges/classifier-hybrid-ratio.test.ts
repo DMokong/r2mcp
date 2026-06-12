@@ -32,7 +32,7 @@ liveOnly('classifier hybrid filter ratio (AC5, live)', () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'edges-ac5-'));
     const result = spawnSync(
       'npx',
-      ['tsx', 'scripts/classify-edges.ts', '--max-cost=50', '--resume=test-run-ac5'],
+      ['tsx', 'src/cli/classify-edges.ts', '--max-cost=50', '--resume=test-run-ac5'],
       { cwd: process.cwd(), env: { ...process.env, R2MCP_EDGE_DATA_DIR: dataDir }, encoding: 'utf-8' },
     );
     expect(result.status).toBe(0);
