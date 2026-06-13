@@ -45,7 +45,7 @@ mcp__memory__remember({
 
 **Key differences in MCP Mode:**
 - Do NOT use Edit/Write tools to modify `preferences.md`, `project-context.md`, or `conversations.md`
-- Do NOT run `node scripts/build-memory-graph.js` — the MCP server handles graph rebuilds automatically
+- Do NOT run any local graph-rebuild script — the MCP server handles graph rebuilds automatically
 - Do NOT write HTML metadata comments (`<!-- type:... -->`) into the content — pass metadata as structured fields instead
 - Cross-references are handled by the MCP server's embedding index — no need to add `[see also: ...]` annotations manually
 - For UPDATE/ARCHIVE: use `mcp__memory__search` or `mcp__memory__recall` to find the `target_id` of the entry to modify
@@ -85,7 +85,7 @@ When invoked as `/remember` with no arguments, or triggered by the SessionEnd ho
 
 ### Tier 1 — Preferences & Decisions → `preferences.md`
 
-Durable personal choices that shape how Cindy works with Dustin.
+Durable choices that shape how the assistant works with the user.
 
 - "Always/never do X" statements
 - Tool or workflow choices (e.g., "use bun instead of npm")
@@ -142,7 +142,7 @@ Every new memory entry MUST include inline metadata as an HTML comment at the en
 |-------|----------|--------|---------|
 | `type` | Yes | `preference`, `decision`, `context`, `relationship`, `observation`, `rejection` | `type:preference` |
 | `topics` | Yes | 1-3 lowercase, hyphenated tags | `topics:tooling,package-management` |
-| `people` | No | Lowercase names, comma-separated | `people:dustin` |
+| `people` | No | Lowercase names, comma-separated | `people:alex` |
 
 ### Type Classification Guide
 
@@ -150,9 +150,9 @@ Every new memory entry MUST include inline metadata as an HTML comment at the en
 |------|-------------|---------|
 | `preference` | "Always/never do X", tool choices, style preferences | "Use bun instead of npm" |
 | `decision` | Choices with rationale, approach selections | "Chose Approach A because..." |
-| `context` | Facts about what exists, system state, what's built | "Slack bot deployed" |
-| `relationship` | Running threads, shared vocabulary, personal context | "Dustin traveling to Manila" |
-| `observation` | Things mentioned in passing, future ideas, loose ends | "Mentioned wanting a Mac Mini" |
+| `context` | Facts about what exists, system state, what's built | "CI pipeline deployed" |
+| `relationship` | Running threads, shared vocabulary, personal context | "User out of office next week" |
+| `observation` | Things mentioned in passing, future ideas, loose ends | "Mentioned wanting a staging environment" |
 | `rejection` | Corrections, "don't do X" patterns, rejected approaches with reasoning | "Don't add verbose error handling for internal functions" |
 
 ### Examples
@@ -160,9 +160,9 @@ Every new memory entry MUST include inline metadata as an HTML comment at the en
 ```markdown
 - Always use bun instead of npm <!-- type:preference topics:tooling,package-management -->
 - Chose tiered files over lifecycle metadata — simpler at current scale <!-- type:decision topics:memory-system,architecture -->
-- Slack bot deployed and functional via mpociot/claude-code-slack-bot <!-- type:context topics:slack,deployment -->
-- Dustin traveling to Manila around 2026-03-02 <!-- type:relationship topics:travel people:dustin -->
-- Mentioned wanting a dedicated Mac Mini for agent hosting <!-- type:observation topics:infrastructure,hardware people:dustin -->
+- CI pipeline deployed and running on GitHub Actions <!-- type:context topics:ci,deployment -->
+- User out of office the week of 2026-03-02 <!-- type:relationship topics:scheduling people:alex -->
+- Mentioned wanting a dedicated staging environment <!-- type:observation topics:infrastructure people:alex -->
 - Don't add verbose error handling for internal functions — trust framework guarantees, only validate at system boundaries <!-- type:rejection topics:code-style,error-handling -->
 ```
 
@@ -202,7 +202,7 @@ For every memory candidate, choose exactly ONE operation before acting. Log the 
 ### ADD — New information, no conflicts
 **When:** No existing entry covers this topic. This is genuinely new information.
 **Action:** Append a new bullet point with metadata to the target tier file.
-**Example:** First time Dustin mentions a tool preference → ADD to preferences.md
+**Example:** First time the user mentions a tool preference → ADD to preferences.md
 
 ### UPDATE — Refine or extend an existing entry
 **When:** An existing entry covers the same topic but has evolved, gained nuance, or needs minor correction. The core fact is still true — it just needs updating.
@@ -225,7 +225,7 @@ For every memory candidate, choose exactly ONE operation before acting. Log the 
 ```
 
 ### REJECTION — Structural correction worth preserving
-**When:** The user corrects your approach and the correction would apply again in similar future situations (structural, not situational). Detected proactively via `.claude/rules/rejection-detection.md` or during conversation scan.
+**When:** The user corrects your approach and the correction would apply again in similar future situations (structural, not situational). Detected during conversation scan (or proactively, if your project configures a rejection-detection rule under `.claude/rules/`).
 **Action:**
 1. Apply the structural test: "Would this rejection apply again in a similar future situation?"
 2. If structural: write entry with `type:rejection` metadata to the appropriate tier file
@@ -265,7 +265,7 @@ For every memory candidate, choose exactly ONE operation before acting. Log the 
 
 ## Proactive Rejection Detection
 
-Rejections are detected proactively during conversation via the always-loaded rule at `.claude/rules/rejection-detection.md`. This section documents the full detection logic that the rule references.
+Rejections are detected during conversation scans by default. Projects that want *proactive* detection (flagging corrections the moment they happen) can add an always-loaded rule under `.claude/rules/` that references this section for the full detection logic.
 
 ### Detection Heuristics
 
@@ -348,10 +348,10 @@ Silent — no output. Perform all judgment and writes silently.
 
 **Direct Mode only** — skip this section entirely in MCP Mode (the server handles graph rebuilds).
 
-After writing to any memory tier file (preferences.md, project-context.md, conversations.md), you may optionally run a Memory Explorer build script if you have one configured:
+After writing to any memory tier file (preferences.md, project-context.md, conversations.md), you may optionally run a graph/index build script if your project has one configured, e.g.:
 
 ```bash
-node scripts/build-memory-graph.js 2>/dev/null || true
+node path/to/your-graph-build-script.js 2>/dev/null || true
 ```
 
-This is a best-effort rebuild — if the script is not present, silently continue.
+This is a best-effort rebuild — if no such script is present, silently continue.
