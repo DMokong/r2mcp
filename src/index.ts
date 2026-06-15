@@ -18,7 +18,7 @@ import { classify } from './tools/classify.js';
 import { extractEntitiesTool } from './tools/extract-entities.js';
 import { dumpEdgesSidecarTool } from './tools/dump-edges-sidecar.js';
 import { lint } from './tools/lint.js';
-import { loadEnvFile } from './env.js';
+import { loadEnvFile, currentScope } from './env.js';
 import { SERVER_INSTRUCTIONS } from './server-instructions.js';
 import { EMBEDDINGS_DISABLED_WARNING } from './embeddings.js';
 import { withToolSpan } from './telemetry.js';
@@ -32,6 +32,9 @@ export { asMcpResponse };
 // Load .env from project root — MCP servers don't inherit parent env vars
 const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
 loadEnvFile(resolve(PROJECT_ROOT, '.env'));
+
+// claw-nyxd: resolve the project scope once at startup (after .env load).
+const CURRENT_SCOPE = currentScope();
 
 const server = new McpServer(
   {
@@ -83,6 +86,7 @@ server.tool(
             target_id: args.target_id,
           },
           PROJECT_ROOT,
+          CURRENT_SCOPE,
         );
         span.setAttribute('dedup_triggered', r.dedup ?? false);
         return r;
@@ -138,6 +142,12 @@ server.tool(
       .describe(
         'SPEC-046: filter results to memories linked to this entity (canonical_name or alias; case-insensitive). When set, response adds entity_resolved/entity_id and per-result entity_links.',
       ),
+    all_scopes: z
+      .boolean()
+      .optional()
+      .describe(
+        'Search across ALL project scopes instead of the current scope + global (default: false).',
+      ),
   },
   async (args) => {
     const queryStr = args.query ?? '';
@@ -161,6 +171,7 @@ server.tool(
           progressive: args.progressive,
           confidence_threshold: args.confidence_threshold,
           entity: args.entity,
+          all_scopes: args.all_scopes,
         });
         span.setAttribute('result_count', r.total_results ?? 0);
         span.setAttribute('search_mode', r.search_mode ?? 'unknown');
@@ -191,6 +202,12 @@ server.tool(
       .optional(),
     query: z.string().optional(),
     limit: z.number().optional(),
+    all_scopes: z
+      .boolean()
+      .optional()
+      .describe(
+        'Search across ALL project scopes instead of the current scope + global (default: false).',
+      ),
   },
   async (args) => {
     const result = await withToolSpan(
@@ -204,6 +221,7 @@ server.tool(
           filter: args.filter,
           query: args.query,
           limit: args.limit,
+          all_scopes: args.all_scopes,
         });
         span.setAttribute('result_count', r.count ?? 0);
         return r;
@@ -238,7 +256,7 @@ server.tool(
   },
   async (args) => {
     const result = await withToolSpan('reject', { target_id: args.id }, async () => {
-      return reject({ id: args.id, reason: args.reason });
+      return reject({ id: args.id, reason: args.reason }, CURRENT_SCOPE);
     });
 
     return asMcpResponse('reject', result, args);
@@ -265,6 +283,7 @@ server.tool(
         const r = await meditate(
           { mode: args.mode, dry_run: args.dry_run, include_lint: args.include_lint },
           PROJECT_ROOT,
+          CURRENT_SCOPE,
         );
         span.setAttribute('entries_affected', r.total_changes ?? 0);
         return r;
@@ -533,6 +552,7 @@ function wireParentDisconnectHandlers(): void {
 
 async function main() {
   await initDb();
+  console.error(`[r2mcp] project scope: ${CURRENT_SCOPE}`);
   if (!process.env.R2MCP_OPENROUTER_API_KEY) {
     console.error(`[r2mcp] ${EMBEDDINGS_DISABLED_WARNING}`);
   }

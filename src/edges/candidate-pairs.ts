@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { currentScope } from '../env.js';
 
 export interface CandidatePair {
   from_id: string;
@@ -9,6 +10,8 @@ export interface CandidatePair {
 
 export interface CandidateOptions {
   sinceDays?: number;
+  /** claw-nyxd: only pair memories within this project scope (no cross-project edges). */
+  scope?: string;
 }
 
 /**
@@ -28,11 +31,12 @@ export async function findCandidatePairs(
   pool: pg.Pool,
   opts: CandidateOptions,
 ): Promise<CandidatePair[]> {
+  const params: unknown[] = [opts.scope ?? currentScope()];
   const sinceClause = opts.sinceDays
-    ? `AND (m1.created_at >= NOW() - ($1 || ' days')::interval
-            OR m2.created_at >= NOW() - ($1 || ' days')::interval)`
+    ? `AND (m1.created_at >= NOW() - ($2 || ' days')::interval
+            OR m2.created_at >= NOW() - ($2 || ' days')::interval)`
     : '';
-  const params = opts.sinceDays ? [String(opts.sinceDays)] : [];
+  if (opts.sinceDays) params.push(String(opts.sinceDays));
 
   const sql = `
     SELECT m1.id AS from_id, m2.id AS to_id,
@@ -45,7 +49,7 @@ export async function findCandidatePairs(
            cardinality(ARRAY(SELECT unnest(m1.topics) INTERSECT SELECT unnest(m2.topics))) >= 2
            OR cardinality(ARRAY(SELECT unnest(m1.people) INTERSECT SELECT unnest(m2.people))) >= 1
          )
-    WHERE TRUE ${sinceClause}
+    WHERE m1.project_scope = $1 AND m2.project_scope = $1 ${sinceClause}
   `;
   const res = await pool.query<CandidatePair>(sql, params);
   return res.rows;

@@ -3,6 +3,22 @@
 All notable changes to r2mcp. Versions follow [semver](https://semver.org/);
 entries reference the internal spec numbers that shipped them.
 
+## [Unreleased]
+
+### Added
+
+- **Project-scope namespacing** (claw-nyxd): multiple projects can share one
+  database without their memories colliding. New `R2MCP_SCOPE` env var (default
+  `global`) namespaces every memory and entity. Reads (`recall`/`search`)
+  default to the current scope + `global`, with `all_scopes: true` to read
+  across everything; writes land in the current scope; destructive maintenance
+  (`meditate`, `lint --fix`, `compile`, the edge classifier) is confined to the
+  current scope unconditionally. Entities are scoped too (`global` entities
+  resolve everywhere). Idempotent migration backfills existing rows to `global`
+  and swaps the `unique(fingerprint)` constraint for `(project_scope,
+  fingerprint)`. The server logs its resolved scope at startup. See README →
+  Cross-Project Memory.
+
 ## [0.2.0] — 2026-06-13
 
 First release packaged for use beyond the original workspace.

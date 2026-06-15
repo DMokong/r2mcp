@@ -101,7 +101,8 @@ describe('contradictions check (C.AC1, C.AC6)', () => {
     const [sql, params] = queryFn.mock.calls[0];
     expect(sql).toContain('e.from_memory_id = $1');
     expect(sql).toContain('e.to_memory_id = $1');
-    expect(params).toEqual(['mem-target', 50]);
+    // claw-nyxd: scope param ('global' default) sits between memoryId and limit.
+    expect(params).toEqual(['mem-target', 'global', 50]);
   });
 
   it('only emits suggested_action values from the documented vocabulary (C.AC6)', async () => {

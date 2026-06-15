@@ -1,6 +1,7 @@
 import { getPool } from '../db.js';
 import { fingerprint } from '../fingerprint.js';
 import { embedText, embeddingWarning } from '../embeddings.js';
+import { currentScope } from '../env.js';
 import { triggerGraphRebuild } from '../graph-rebuild.js';
 import pgvector from 'pgvector';
 
@@ -44,6 +45,7 @@ export interface RememberResult {
 export async function remember(
   input: RememberInput,
   projectRoot?: string,
+  scope: string = currentScope(),
 ): Promise<RememberResult> {
   const { operation, tier, content, metadata, target_id } = input;
 
@@ -57,8 +59,12 @@ export async function remember(
     const fp = fingerprint(content);
     const type = operation === 'REJECTION' ? 'rejection' : metadata.type;
 
-    // Check for dedup via fingerprint
-    const existing = await pool.query('SELECT id FROM memories WHERE fingerprint = $1', [fp]);
+    // Check for dedup via fingerprint — per scope (claw-nyxd): the same insight
+    // can exist independently in two projects.
+    const existing = await pool.query(
+      'SELECT id FROM memories WHERE fingerprint = $1 AND project_scope = $2',
+      [fp, scope],
+    );
 
     if (existing.rows.length > 0) {
       // Dedup: just update timestamp
@@ -77,8 +83,8 @@ export async function remember(
     const embedding = await embedText(content);
 
     const result = await pool.query(
-      `INSERT INTO memories (content, tier, type, section, topics, people, date, fingerprint, embedding)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO memories (content, tier, type, section, topics, people, date, fingerprint, embedding, project_scope)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
       [
         content,
@@ -90,6 +96,7 @@ export async function remember(
         metadata.date || null,
         fp,
         embedding ? toSql(embedding) : null,
+        scope,
       ],
     );
 
@@ -127,7 +134,7 @@ export async function remember(
         fingerprint = $8,
         embedding = $9,
         updated_at = NOW()
-       WHERE id = $10
+       WHERE id = $10 AND project_scope = $11
        RETURNING id`,
       [
         content,
@@ -140,6 +147,7 @@ export async function remember(
         fp,
         embedding ? toSql(embedding) : null,
         target_id,
+        scope,
       ],
     );
 
@@ -165,10 +173,11 @@ export async function remember(
       return { operation: 'ARCHIVE', message: 'ARCHIVE requires target_id.' };
     }
 
-    // Soft-archive: set type to 'archived' (preserves data for reversibility)
+    // Soft-archive: set type to 'archived' (preserves data for reversibility).
+    // Scope-restricted so a project can't archive another project's memory.
     const archived = await pool.query(
-      "UPDATE memories SET type = 'archived', updated_at = NOW() WHERE id = $1 RETURNING id",
-      [target_id],
+      "UPDATE memories SET type = 'archived', updated_at = NOW() WHERE id = $1 AND project_scope = $2 RETURNING id",
+      [target_id, scope],
     );
 
     if (archived.rows.length === 0) {
@@ -183,8 +192,8 @@ export async function remember(
       replacementWarning = embeddingWarning(embedding);
 
       await pool.query(
-        `INSERT INTO memories (content, tier, type, section, topics, people, date, fingerprint, embedding)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO memories (content, tier, type, section, topics, people, date, fingerprint, embedding, project_scope)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           content,
           tier,
@@ -195,6 +204,7 @@ export async function remember(
           metadata.date || null,
           fp,
           embedding ? toSql(embedding) : null,
+          scope,
         ],
       );
     }

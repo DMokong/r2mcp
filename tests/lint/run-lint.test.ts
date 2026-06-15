@@ -16,6 +16,12 @@ function poolWithScripts(scripts: Record<string, unknown[]>): PoolLike & { calls
     calls,
     query: vi.fn(async (sql: string, params: unknown[] = []) => {
       calls.push({ sql, params });
+      // applyFixes UPDATEs first — the edge-rewrite UPDATE's WHERE contains
+      // `relation = 'contradicts'`, which the SELECT matchers below would
+      // otherwise misroute. rowCount confirms the fix landed (claw-nyxd: a
+      // scope-mismatched UPDATE affects 0 rows and is NOT reported as applied).
+      if (sql.startsWith('UPDATE memories SET')) return { rows: [], rowCount: 1 } as never;
+      if (sql.startsWith('UPDATE memory_edges')) return { rows: [], rowCount: 1 } as never;
       // Match against substrings unique to each check's SQL
       if (sql.includes("relation = 'contradicts'") && sql.includes('m1.created_at > m2.created_at')) {
         return { rows: scripts.superseded_unflagged ?? [] } as never;
@@ -26,8 +32,6 @@ function poolWithScripts(scripts: Record<string, unknown[]>): PoolLike & { calls
       if (sql.includes('NOT EXISTS') && sql.includes('e.from_memory_id = m.id OR e.to_memory_id = m.id')) return { rows: scripts.orphans ?? [] } as never;
       if (sql.includes('NOT EXISTS') && sql.includes('to_memory_id = m.id')) return { rows: scripts.stale ?? [] } as never;
       if (sql.includes('shared_topics')) return { rows: scripts.drift ?? [] } as never;
-      if (sql.startsWith('UPDATE memories SET')) return { rows: [] } as never;
-      if (sql.startsWith('UPDATE memory_edges')) return { rows: [] } as never;
       return { rows: [] } as never;
     }) as PoolLike['query'],
   };

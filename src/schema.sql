@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS memories (
   topics        TEXT[] DEFAULT '{}',
   people        TEXT[] DEFAULT '{}',
   date          DATE,
-  fingerprint   TEXT NOT NULL UNIQUE,
+  fingerprint   TEXT NOT NULL,
   embedding     vector(1536),
   source_file   TEXT,
   source_line   INTEGER,
@@ -39,6 +39,45 @@ BEGIN
   ALTER TABLE memories DROP CONSTRAINT IF EXISTS memories_type_check;
   ALTER TABLE memories ADD CONSTRAINT memories_type_check
     CHECK (type IN ('preference', 'decision', 'context', 'relationship', 'observation', 'rejection', 'archived'));
+END $$;
+
+-- ============================================================================
+-- E3 (claw-nyxd): project_scope namespacing — idempotent migration.
+-- Multiple projects can share one database without their memories colliding.
+-- Existing rows backfill to 'global' (preserves prior shared-pool behavior for
+-- any adopter upgrading). Per-deployment isolation is opt-in via R2MCP_SCOPE.
+-- ============================================================================
+
+-- 1. Add the scope column. NOT NULL DEFAULT backfills every existing row to
+--    'global' in one pass; IF NOT EXISTS makes re-runs on boot a no-op.
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS project_scope TEXT NOT NULL DEFAULT 'global';
+CREATE INDEX IF NOT EXISTS idx_memories_project_scope ON memories (project_scope);
+CREATE INDEX IF NOT EXISTS idx_memories_scope_fingerprint ON memories (project_scope, fingerprint);
+
+-- 2. Swap the global unique(fingerprint) for a per-scope composite. Discover the
+--    old constraint by DEFINITION (not by assumed name) so it works whatever
+--    Postgres auto-named the inline column UNIQUE. Pure constraint reshape — no
+--    rows touched; the composite is strictly weaker so it can't fail on live data.
+DO $$
+DECLARE cname text;
+BEGIN
+  SELECT con.conname INTO cname
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ANY (con.conkey)
+   WHERE rel.relname = 'memories'
+     AND con.contype = 'u'
+     AND array_length(con.conkey, 1) = 1
+     AND att.attname = 'fingerprint';
+  IF cname IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE memories DROP CONSTRAINT %I', cname);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'memories_scope_fingerprint_key' AND conrelid = 'memories'::regclass
+  ) THEN
+    ALTER TABLE memories ADD CONSTRAINT memories_scope_fingerprint_key UNIQUE (project_scope, fingerprint);
+  END IF;
 END $$;
 
 -- ============================================================================
@@ -98,6 +137,24 @@ CREATE TABLE IF NOT EXISTS entities (
 CREATE INDEX IF NOT EXISTS idx_entities_normalized ON entities (normalized_name);
 CREATE INDEX IF NOT EXISTS idx_entities_aliases    ON entities USING gin (aliases);
 CREATE INDEX IF NOT EXISTS idx_entities_type       ON entities (type);
+
+-- E3 (claw-nyxd): scope entities per project, in lockstep with src/entities/db.ts
+-- (the upsert's ON CONFLICT target must match this composite). Idempotent.
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS project_scope TEXT NOT NULL DEFAULT 'global';
+CREATE INDEX IF NOT EXISTS idx_entities_project_scope ON entities (project_scope);
+DO $$
+DECLARE cols int;
+BEGIN
+  -- Re-create entities_unique as the 3-col composite only if it isn't already
+  -- (re-running on boot must be a no-op; the old 2-col version gets replaced once).
+  SELECT array_length(con.conkey, 1) INTO cols
+    FROM pg_constraint con
+   WHERE con.conname = 'entities_unique' AND con.conrelid = 'entities'::regclass;
+  IF cols IS DISTINCT FROM 3 THEN
+    ALTER TABLE entities DROP CONSTRAINT IF EXISTS entities_unique;
+    ALTER TABLE entities ADD CONSTRAINT entities_unique UNIQUE (project_scope, type, normalized_name);
+  END IF;
+END $$;
 
 -- Note: memory_entities.confidence is NUMERIC(3,2) to match memory_edges.confidence
 -- from SPEC-043 (already shipped). The SPEC-046 PR review (claw-2jbo) flagged the

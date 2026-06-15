@@ -195,6 +195,7 @@ consumers, **the `.mcp.json` `env` block is the primary config surface**
 |----------|----------|--------------|
 | `R2MCP_DATABASE_URL` | **Yes** | PostgreSQL + pgvector connection string. The server **fails fast at startup** if unset — it never guesses a database. |
 | `R2MCP_OPENROUTER_API_KEY` | Recommended | Enables semantic-search embeddings. When unset, the server logs a startup warning and `remember`/`recall` responses carry a `warnings[]` field — everything still works full-text. |
+| `R2MCP_SCOPE` | Optional | Project namespace (default `global`). Set this per-project so multiple projects can share one database without their memories colliding — see [Cross-Project Memory](#cross-project-memory). |
 | `R2MCP_CLAUDE_BIN` | Sometimes | Absolute path to the `claude` binary for the $0 Max-plan provider. Needed when the spawning process's PATH doesn't include it — common under launchd jobs and some MCP hosts (e.g. `~/.local/bin/claude`). The spawn error names this variable when it's the fix. |
 | `ANTHROPIC_API_KEY` | Optional | Only for `--provider=anthropic` on classifier/compile runs. |
 | `R2MCP_CLASSIFIER_PROVIDER` | Optional | Pin a provider (`claude-code` \| `anthropic` \| `openrouter`) instead of auto-fallback. |
@@ -306,7 +307,29 @@ Plus `signals[]` on the response surfaces typed memory edges (`contradicts`, `su
 
 ## Cross-Project Memory
 
-All projects pointing at the same `R2MCP_DATABASE_URL` share a single memory pool. This is intentional — your knowledge travels with you. Namespace isolation is a v2 roadmap item.
+Multiple projects can share one database while keeping their memories separate, via the `R2MCP_SCOPE` namespace.
+
+**Set `R2MCP_SCOPE` per-project** in each project's `.mcp.json` `env` block:
+
+```json
+"env": {
+  "R2MCP_DATABASE_URL": "${R2MCP_DATABASE_URL}",
+  "R2MCP_SCOPE": "my-project"
+}
+```
+
+How scoping behaves:
+
+- **Writes** (`remember`, `reject`) land in the current scope.
+- **Reads** (`recall`, `search`) default to the **current scope + `global`**. So each project sees its own memories plus anything you deliberately put in the shared `global` scope. Pass `all_scopes: true` to read across every scope.
+- **Destructive maintenance** (`meditate`, `lint --fix`, `compile`, the edge classifier) is confined to the current scope unconditionally — a cleanup in one project can never archive or rewrite another's data.
+- **Entities** are scoped too; `global`-scoped entities resolve from any project, so you can share a common vocabulary deliberately.
+
+**Default behavior (no `R2MCP_SCOPE` set):** everything reads and writes the `global` scope — a single shared pool, identical to pre-scope behavior. Existing memories from before you upgraded are backfilled to `global`, so nothing is lost.
+
+**Sharing knowledge across projects:** write memories you want everywhere into the `global` scope (run that session with `R2MCP_SCOPE=global` or unset), or query with `all_scopes: true` when you explicitly want the whole store.
+
+> **Note for scheduled jobs:** set `R2MCP_SCOPE` in the launchd/cron job's environment too, not just `.mcp.json` — a background classifier or compile run uses its own environment, and an unset scope there would operate on `global` instead of your project.
 
 ## OpenTelemetry (optional)
 

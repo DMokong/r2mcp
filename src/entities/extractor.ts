@@ -18,6 +18,7 @@ import {
   linkMemoryToEntity,
 } from './db.js';
 import { normalizeEntityName } from './normalize.js';
+import { currentScope } from '../env.js';
 import { EntityState } from './state.js';
 import type { RunSummary } from './types.js';
 
@@ -27,6 +28,8 @@ export interface RunExtractorOptions {
   dataDir: string;
   maxCostUsd: number;
   contextTopN: number;
+  /** claw-nyxd: extraction operates within one project scope (default: current). */
+  scope?: string;
   sinceDays?: number;
   full?: boolean;
   resumeFrom?: string;
@@ -35,6 +38,7 @@ export interface RunExtractorOptions {
 export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummary> {
   const startedAt = new Date();
   const runId = randomUUID();
+  const scope = opts.scope ?? currentScope();
   const state = new EntityState({ runId, dataDir: opts.dataDir, resumeFrom: opts.resumeFrom });
 
   let memories_seen = 0;
@@ -47,11 +51,15 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
   let hit_cost_cap = false;
   let hallucinated_matched = 0;
 
-  const candidates = await findCandidateMemories(opts.client, {
-    sinceDays: opts.sinceDays,
-    full: opts.full,
-  });
-  const known = await getTopEntitiesByFrequency(opts.client, opts.contextTopN);
+  const candidates = await findCandidateMemories(
+    opts.client,
+    {
+      sinceDays: opts.sinceDays,
+      full: opts.full,
+    },
+    scope,
+  );
+  const known = await getTopEntitiesByFrequency(opts.client, opts.contextTopN, scope);
 
   // claw-2jbo finding 1: build a normalized-name → entity-id map once per run
   // so LLM-matched canonical_names resolve synchronously instead of issuing
@@ -144,11 +152,15 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
       if (link.inserted) links_created++;
     }
     for (const n of parsed.value.new_entities) {
-      const up = await upsertEntity(opts.client, {
-        type: n.type,
-        canonical_name: n.canonical_name,
-        aliases: n.aliases,
-      });
+      const up = await upsertEntity(
+        opts.client,
+        {
+          type: n.type,
+          canonical_name: n.canonical_name,
+          aliases: n.aliases,
+        },
+        scope,
+      );
       if (up.created) entities_created++;
       else entities_updated++;
       // Alias merge happens inside upsertEntity's ON CONFLICT clause (see db.ts).

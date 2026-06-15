@@ -1,5 +1,6 @@
 import type { LintFinding } from '../types.js';
 import type { PoolLike } from './contradictions.js';
+import { currentScope } from '../../env.js';
 
 /**
  * Drift: candidate pairs that look like they SHOULD have a structural edge
@@ -32,6 +33,7 @@ const DRIFT_SQL = `
   FROM memories m1
   JOIN memories m2 ON m1.created_at > m2.created_at + INTERVAL '30 days'
   WHERE m1.type != 'archived' AND m2.type != 'archived'
+    AND m1.project_scope = $2 AND m2.project_scope = $2
     AND (
       SELECT COUNT(*) FROM unnest(m1.topics) t1
       WHERE t1 = ANY(m2.topics)
@@ -45,8 +47,11 @@ const DRIFT_SQL = `
   LIMIT $1
 `;
 
-export async function findDrift(pool: PoolLike, opts: { limit: number }): Promise<LintFinding[]> {
-  const rows = await pool.query<DriftRow>(DRIFT_SQL, [opts.limit]);
+export async function findDrift(
+  pool: PoolLike,
+  opts: { limit: number; scope?: string },
+): Promise<LintFinding[]> {
+  const rows = await pool.query<DriftRow>(DRIFT_SQL, [opts.limit, opts.scope ?? currentScope()]);
   return rows.rows.map((r) => ({
     check: 'drift',
     memory_id: r.newer_id,

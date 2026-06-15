@@ -7,6 +7,7 @@
 
 import type pg from 'pg';
 import { normalizeEntityName } from './normalize.js';
+import { currentScope, DEFAULT_SCOPE } from '../env.js';
 import type { EntityRow, EntityType } from './types.js';
 
 type DbClient = pg.Pool | pg.PoolClient;
@@ -24,6 +25,7 @@ export interface UpsertEntityResult {
 export async function upsertEntity(
   client: DbClient,
   input: UpsertEntityInput,
+  scope: string = currentScope(),
 ): Promise<UpsertEntityResult> {
   const normalized = normalizeEntityName(input.canonical_name);
   const aliases = (input.aliases ?? [])
@@ -35,14 +37,16 @@ export async function upsertEntity(
   // mergeAliases() separately. Direct consumers of upsertEntity now get the
   // union-merge for free. ARRAY(SELECT DISTINCT UNNEST(...)) is the same
   // union shape used by mergeAliases below.
+  // claw-nyxd: entity identity is per project_scope — the conflict target must
+  // match the composite UNIQUE (project_scope, type, normalized_name).
   const { rows } = await client.query(
-    `INSERT INTO entities (type, canonical_name, normalized_name, aliases)
-     VALUES ($1, $2, $3, $4::text[])
-     ON CONFLICT (type, normalized_name) DO UPDATE SET
+    `INSERT INTO entities (project_scope, type, canonical_name, normalized_name, aliases)
+     VALUES ($1, $2, $3, $4, $5::text[])
+     ON CONFLICT (project_scope, type, normalized_name) DO UPDATE SET
        aliases = ARRAY(SELECT DISTINCT UNNEST(entities.aliases || EXCLUDED.aliases)),
        last_seen_at = NOW()
      RETURNING id, (xmax = 0) AS created`,
-    [input.type, input.canonical_name, normalized, aliases],
+    [scope, input.type, input.canonical_name, normalized, aliases],
   );
   return { id: rows[0].id, created: rows[0].created };
 }
@@ -50,16 +54,26 @@ export async function upsertEntity(
 export async function findEntityByInput(
   client: DbClient,
   input: string,
+  scopes: string[] | null = [currentScope(), DEFAULT_SCOPE],
 ): Promise<EntityRow | null> {
   const normalized = normalizeEntityName(input);
   if (!normalized) return null;
 
+  // claw-nyxd: resolve only entities in the caller's scope(s) (current + global),
+  // so a recall in project A can't resolve an entity only project B created.
+  // scopes === null means all_scopes — no scope filter.
+  const params: unknown[] = [normalized];
+  let scopeFilter = '';
+  if (scopes !== null) {
+    params.push(scopes);
+    scopeFilter = ` AND project_scope = ANY($${params.length}::text[])`;
+  }
   const { rows } = await client.query<EntityRow>(
     `SELECT id, type, canonical_name, normalized_name, aliases, metadata, first_seen_at, last_seen_at
      FROM entities
-     WHERE normalized_name = $1 OR $1 = ANY(aliases)
+     WHERE (normalized_name = $1 OR $1 = ANY(aliases))${scopeFilter}
      LIMIT 1`,
-    [normalized],
+    params,
   );
   return rows[0] ?? null;
 }
@@ -103,6 +117,7 @@ export async function linkMemoryToEntity(
 export async function getTopEntitiesByFrequency(
   client: DbClient,
   n: number,
+  scope: string = currentScope(),
 ): Promise<
   Array<{
     id: string;
@@ -122,10 +137,11 @@ export async function getTopEntitiesByFrequency(
             COUNT(me.memory_id)::int AS link_count
      FROM entities e
      LEFT JOIN memory_entities me ON me.entity_id = e.id
+     WHERE e.project_scope = $2
      GROUP BY e.id
      ORDER BY link_count DESC, e.canonical_name ASC
      LIMIT $1`,
-    [n],
+    [n, scope],
   );
   return rows;
 }
@@ -144,9 +160,10 @@ export interface CandidateFilter {
 export async function findCandidateMemories(
   client: DbClient,
   filter: CandidateFilter,
+  scope: string = currentScope(),
 ): Promise<Array<{ id: string; content: string; updated_at: Date }>> {
-  const params: unknown[] = [];
-  const clauses: string[] = [];
+  const params: unknown[] = [scope];
+  const clauses: string[] = ['m.project_scope = $1'];
   if (!filter.full) {
     // Default pre-filter: no existing entity rows OR memory updated since most recent link
     clauses.push(`(

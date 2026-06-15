@@ -1,5 +1,6 @@
 import { getPool } from '../db.js';
 import { embedText, embeddingWarning } from '../embeddings.js';
+import { currentScope, DEFAULT_SCOPE } from '../env.js';
 import pgvector from 'pgvector';
 import { getSignalsForMemoryIds } from '../edges/signals.js';
 import type { RecallSignal } from '../edges/types.js';
@@ -7,6 +8,18 @@ import { findEntityByInput, getEntityLinksForMemories } from '../entities/db.js'
 import type { EntityRow, EntityType } from '../entities/types.js';
 
 const { toSql } = pgvector;
+
+/**
+ * Build a scope predicate (claw-nyxd). `scopes === null` means all_scopes — no
+ * filter. Otherwise restrict to the given scopes (normally [current, 'global']).
+ * Pushes the array onto params and returns the SQL fragment (empty when null).
+ * `prefix` is the table alias, e.g. 'm.' for queries that alias memories as m.
+ */
+function scopeClause(prefix: string, params: unknown[], scopes: string[] | null): string {
+  if (scopes === null) return '';
+  params.push(scopes);
+  return ` AND ${prefix}project_scope = ANY($${params.length}::text[])`;
+}
 
 export type Tier = 'preferences' | 'project-context' | 'conversations';
 export type MatchType = 'semantic' | 'fulltext' | 'hybrid';
@@ -80,6 +93,8 @@ export interface RecallInput {
   confidence_threshold?: number;
   /** SPEC-046: optional entity filter. Resolves via canonical_name or alias. */
   entity?: string;
+  /** claw-nyxd: when true, search across ALL project scopes (default: current + global). */
+  all_scopes?: boolean;
 }
 
 // Internal type with pre-tier-weight score and raw embedding for MMR computation
@@ -190,6 +205,7 @@ async function hybridSearchTier(
   query: string,
   queryEmbedding: number[],
   topK: number,
+  scopes: string[] | null,
   tier?: Tier,
   fetchEmbeddings = false,
   entityId?: string,
@@ -209,6 +225,7 @@ async function hybridSearchTier(
     entityFilter = ` AND id IN (SELECT memory_id FROM memory_entities WHERE entity_id = $${params.length + 1})`;
     params.push(entityId);
   }
+  const scopeFilter = scopeClause('', params, scopes);
 
   const embeddingCol = fetchEmbeddings ? 'embedding::text AS raw_embedding,' : '';
 
@@ -229,7 +246,7 @@ async function hybridSearchTier(
       AND (
         embedding IS NOT NULL
         OR tsv @@ plainto_tsquery('english', $2)
-      )${tierFilter}${entityFilter}
+      )${tierFilter}${entityFilter}${scopeFilter}
     )
     SELECT *,
       CASE match_type
@@ -271,6 +288,7 @@ async function fulltextSearchTier(
   pool: ReturnType<typeof getPool>,
   query: string,
   topK: number,
+  scopes: string[] | null,
   tier?: Tier,
   entityId?: string,
 ): Promise<InternalResult[]> {
@@ -285,6 +303,7 @@ async function fulltextSearchTier(
     entityFilter = ` AND id IN (SELECT memory_id FROM memory_entities WHERE entity_id = $${params.length + 1})`;
     params.push(entityId);
   }
+  const scopeFilter = scopeClause('', params, scopes);
 
   const sql = `
     SELECT
@@ -292,7 +311,7 @@ async function fulltextSearchTier(
       ts_rank(tsv, plainto_tsquery('english', $1)) AS fulltext_score
     FROM memories
     WHERE type NOT IN ('rejection', 'archived')
-    AND tsv @@ plainto_tsquery('english', $1)${tierFilter}${entityFilter}
+    AND tsv @@ plainto_tsquery('english', $1)${tierFilter}${entityFilter}${scopeFilter}
     ORDER BY fulltext_score DESC
     LIMIT ${topK}
   `;
@@ -329,6 +348,7 @@ async function progressiveHybridSearch(
   queryEmbedding: number[],
   topK: number,
   confidenceThreshold: number,
+  scopes: string[] | null,
   entityId?: string,
 ): Promise<{ results: InternalResult[]; tiersSearched: string[]; earlyStopped: boolean }> {
   const tiersSearched: string[] = [];
@@ -342,6 +362,7 @@ async function progressiveHybridSearch(
       query,
       queryEmbedding,
       topK,
+      scopes,
       tier,
       true,
       entityId,
@@ -377,6 +398,7 @@ async function entityOnlySearch(
   pool: ReturnType<typeof getPool>,
   entityId: string,
   topK: number,
+  scopes: string[] | null,
   tier?: Tier,
 ): Promise<InternalResult[]> {
   const params: unknown[] = [entityId];
@@ -385,11 +407,12 @@ async function entityOnlySearch(
     tierFilter = ` AND m.tier = $${params.length + 1}`;
     params.push(tier);
   }
+  const scopeFilter = scopeClause('m.', params, scopes);
   const sql = `
     SELECT m.id, m.content, m.tier, m.type, m.topics, m.people, m.created_at, m.updated_at
     FROM memories m
     WHERE m.type NOT IN ('rejection', 'archived')
-    AND m.id IN (SELECT memory_id FROM memory_entities WHERE entity_id = $1)${tierFilter}
+    AND m.id IN (SELECT memory_id FROM memory_entities WHERE entity_id = $1)${tierFilter}${scopeFilter}
     ORDER BY m.updated_at DESC
     LIMIT ${topK}
   `;
@@ -426,9 +449,16 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
     progressive = true,
     confidence_threshold = DEFAULT_CONFIDENCE_THRESHOLD,
     entity,
+    all_scopes = false,
   } = input;
 
   const pool = getPool();
+
+  // claw-nyxd: default reads union the current scope with 'global' (shared
+  // knowledge). all_scopes=true bypasses the filter entirely (null = no clause).
+  const scopes: string[] | null = all_scopes
+    ? null
+    : Array.from(new Set([currentScope(), DEFAULT_SCOPE]));
 
   // SPEC-046: resolve entity BEFORE retrieval. The resolution is the cheapest
   // possible signal — a single indexed lookup on entities.normalized_name.
@@ -437,7 +467,8 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
   const entityFilterActive = entity !== undefined && entity !== '';
   let resolvedEntity: EntityRow | null = null;
   if (entityFilterActive) {
-    resolvedEntity = await findEntityByInput(pool, entity!);
+    // Entity resolution honors the same scope union (or all_scopes bypass).
+    resolvedEntity = await findEntityByInput(pool, entity!, scopes);
     if (!resolvedEntity) {
       return {
         results: [],
@@ -459,8 +490,13 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
 
   let hasDbEmbeddings = false;
   if (queryEmbedding) {
+    // Probe within the SAME scope set recall will query, so "has embeddings?"
+    // can't diverge from the rows actually searched (claw-nyxd).
+    const probeParams: unknown[] = [];
+    const probeScope = scopeClause('', probeParams, scopes);
     const embCheck = await pool.query(
-      'SELECT EXISTS(SELECT 1 FROM memories WHERE embedding IS NOT NULL) AS has_embeddings',
+      `SELECT EXISTS(SELECT 1 FROM memories WHERE embedding IS NOT NULL${probeScope}) AS has_embeddings`,
+      probeParams,
     );
     hasDbEmbeddings = embCheck.rows[0].has_embeddings;
   }
@@ -482,7 +518,7 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
   if (skipRanking && entityId) {
     // SPEC-046: entity-only fast path. No query → no ranking signal; just
     // return entity-linked memories ordered by recency.
-    rawResults = await entityOnlySearch(pool, entityId, candidateLimit, tier);
+    rawResults = await entityOnlySearch(pool, entityId, candidateLimit, scopes, tier);
     tiersSearched = tier ? [tier] : (TIER_ORDER as string[]);
   } else if (useHybrid && progressive && !tier) {
     // Phase 3: progressive tier search — most valuable in semantic mode
@@ -492,6 +528,7 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
       queryEmbedding!,
       candidateLimit,
       confidence_threshold,
+      scopes,
       entityId,
     );
     rawResults = r.results;
@@ -504,6 +541,7 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
       query,
       queryEmbedding!,
       candidateLimit,
+      scopes,
       tier,
       true,
       entityId,
@@ -511,7 +549,7 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
     tiersSearched = tier ? [tier] : (TIER_ORDER as string[]);
   } else {
     // Fulltext-only fallback: no embeddings available
-    rawResults = await fulltextSearchTier(pool, query, candidateLimit, tier, entityId);
+    rawResults = await fulltextSearchTier(pool, query, candidateLimit, scopes, tier, entityId);
     tiersSearched = tier ? [tier] : (TIER_ORDER as string[]);
   }
 

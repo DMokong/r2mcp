@@ -1,4 +1,5 @@
 import { getPool } from '../db.js';
+import { currentScope, DEFAULT_SCOPE } from '../env.js';
 
 export interface SearchFilter {
   type?: string;
@@ -13,6 +14,8 @@ export interface SearchInput {
   filter?: SearchFilter;
   query?: string;
   limit?: number;
+  /** claw-nyxd: when true, search across ALL project scopes (default: current + global). */
+  all_scopes?: boolean;
 }
 
 export interface SearchResultEntry {
@@ -35,11 +38,18 @@ export interface SearchResult {
 
 export async function search(input: SearchInput): Promise<SearchResult> {
   const pool = getPool();
-  const { filter, query, limit = 20 } = input;
+  const { filter, query, limit = 20, all_scopes = false } = input;
 
   const conditions: string[] = ["type != 'rejection'"];
   const params: unknown[] = [];
   let paramIndex = 1;
+
+  // claw-nyxd: restrict to current + global scope unless all_scopes is set.
+  if (!all_scopes) {
+    conditions.push(`project_scope = ANY($${paramIndex}::text[])`);
+    params.push(Array.from(new Set([currentScope(), DEFAULT_SCOPE])));
+    paramIndex++;
+  }
 
   if (filter) {
     if (filter.type) {

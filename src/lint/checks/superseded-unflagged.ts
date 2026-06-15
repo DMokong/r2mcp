@@ -1,5 +1,6 @@
 import type { LintFinding } from '../types.js';
 import type { PoolLike } from './contradictions.js';
+import { currentScope } from '../../env.js';
 
 /**
  * superseded_unflagged: a pair has an existing `relation='contradicts'` edge,
@@ -49,15 +50,19 @@ const SUPER_UNFLAGGED_SQL = `
     AND m1.created_at > m2.created_at  -- from is strictly newer
     AND m1.type != 'archived'
     AND m2.type != 'archived'
+    AND m1.project_scope = $2 AND m2.project_scope = $2
   ORDER BY (m1.created_at - m2.created_at) DESC
   LIMIT $1
 `;
 
 export async function findSupersededUnflagged(
   pool: PoolLike,
-  opts: { limit: number },
+  opts: { limit: number; scope?: string },
 ): Promise<LintFinding[]> {
-  const rows = await pool.query<SuperUnflaggedRow>(SUPER_UNFLAGGED_SQL, [opts.limit]);
+  const rows = await pool.query<SuperUnflaggedRow>(SUPER_UNFLAGGED_SQL, [
+    opts.limit,
+    opts.scope ?? currentScope(),
+  ]);
   const findings: LintFinding[] = [];
   for (const r of rows.rows) {
     const ageGapDays = ageDays(r.from_created_at, r.to_created_at);

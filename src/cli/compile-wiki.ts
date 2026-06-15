@@ -34,7 +34,7 @@ import {
 import { runCompile } from '../compiler/run.js';
 import type { EdgeForCompile, MemoryForCompile, Tier } from '../compiler/types.js';
 import { withToolSpan } from '../telemetry.js';
-import { loadEnvFile } from '../env.js';
+import { loadEnvFile, currentScope } from '../env.js';
 
 interface CliArgs {
   tier?: Tier;
@@ -82,8 +82,9 @@ function parseArgs(argv: string[]): CliArgs {
 async function loadMemoriesFromDb(scope: CliArgs): Promise<MemoryForCompile[]> {
   const pool = getPool();
   // Load memories — filter at the SQL layer when scope is narrow.
-  let where = `type != 'archived'`;
-  const params: unknown[] = [];
+  // claw-nyxd: a compiled wiki reflects ONE project — always scope-restrict.
+  const params: unknown[] = [currentScope()];
+  let where = `type != 'archived' AND project_scope = $1`;
   if (scope.tier) {
     params.push(scope.tier);
     where += ` AND tier = $${params.length}`;
@@ -170,7 +171,14 @@ async function main() {
   }
 
   const projectRoot = process.env.PROJECT_ROOT || process.cwd();
-  const compiledDir = resolve(projectRoot, 'memory/compiled');
+  // claw-nyxd: partition compiled output by scope so deleteStaleFiles in one
+  // project can never remove another project's wiki. 'global' keeps the legacy
+  // flat path for backward compatibility with existing consumers.
+  const scopeName = currentScope();
+  const compiledDir =
+    scopeName === 'global'
+      ? resolve(projectRoot, 'memory/compiled')
+      : resolve(projectRoot, 'memory/compiled', scopeName.replace(/[^a-zA-Z0-9._-]/g, '_'));
   const runId = randomUUID();
   const startedAt = new Date().toISOString();
   const sourceGitSha = gitSha(projectRoot);

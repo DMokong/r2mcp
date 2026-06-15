@@ -21,29 +21,37 @@ import {
   type LintResult,
   type LintSummary,
 } from './types.js';
+import { currentScope } from '../env.js';
 
 const DEFAULT_LIMIT = 100;
 const DEFAULT_SINCE_DAYS = 90;
 
-export async function runLint(input: LintInput, pool: PoolLike): Promise<LintResult> {
+export async function runLint(
+  input: LintInput,
+  pool: PoolLike,
+  scope: string = currentScope(),
+): Promise<LintResult> {
   const limit = input.limit ?? DEFAULT_LIMIT;
   const sinceDays = input.since_days ?? DEFAULT_SINCE_DAYS;
   const checksToRun: CheckName[] = input.check ? [input.check] : [...ALL_CHECKS];
 
+  // claw-nyxd: lint is scoped to the current project — both the read checks
+  // (so findings never reference another project) and applyFixes (so a --fix
+  // can never archive or rewrite another project's data).
   const findings: LintFinding[] = [];
   for (const check of checksToRun) {
     if (check === 'contradictions') {
       findings.push(
-        ...(await findContradictions(pool, { limit, memoryId: input.memory_id })),
+        ...(await findContradictions(pool, { limit, memoryId: input.memory_id, scope })),
       );
     } else if (check === 'stale') {
-      findings.push(...(await findStale(pool, { sinceDays, limit })));
+      findings.push(...(await findStale(pool, { sinceDays, limit, scope })));
     } else if (check === 'orphans') {
-      findings.push(...(await findOrphans(pool, { limit })));
+      findings.push(...(await findOrphans(pool, { limit, scope })));
     } else if (check === 'drift') {
-      findings.push(...(await findDrift(pool, { limit })));
+      findings.push(...(await findDrift(pool, { limit, scope })));
     } else if (check === 'superseded_unflagged') {
-      findings.push(...(await findSupersededUnflagged(pool, { limit })));
+      findings.push(...(await findSupersededUnflagged(pool, { limit, scope })));
     }
   }
 
@@ -51,7 +59,7 @@ export async function runLint(input: LintInput, pool: PoolLike): Promise<LintRes
   const result: LintResult = { summary, findings };
 
   if (input.fix) {
-    const fixesApplied = await applyFixes(pool, findings);
+    const fixesApplied = await applyFixes(pool, findings, scope);
     result.fixes_applied = fixesApplied;
   }
 
@@ -90,28 +98,35 @@ function buildSummary(findings: LintFinding[]): LintSummary {
 async function applyFixes(
   pool: PoolLike,
   findings: LintFinding[],
+  scope: string,
 ): Promise<NonNullable<LintResult['fixes_applied']>> {
   const applied: NonNullable<LintResult['fixes_applied']> = [];
   for (const f of findings) {
     if (f.confidence < FIX_CONFIDENCE_THRESHOLD) continue;
     if (f.check === 'stale' && f.suggested_action === 'archive') {
-      await pool.query(
-        `UPDATE memories SET type = 'archived', updated_at = NOW() WHERE id = $1 AND type != 'archived'`,
-        [f.memory_id],
+      const r = await pool.query(
+        `UPDATE memories SET type = 'archived', updated_at = NOW()
+         WHERE id = $1 AND type != 'archived' AND project_scope = $2`,
+        [f.memory_id, scope],
       );
-      applied.push({ memory_id: f.memory_id, action: 'archive' });
+      if ((r.rowCount ?? 0) > 0) applied.push({ memory_id: f.memory_id, action: 'archive' });
     } else if (
       f.check === 'superseded_unflagged' &&
       f.suggested_action === 'fix_edge_type' &&
       f.related_memory_id
     ) {
-      await pool.query(
-        `UPDATE memory_edges
+      // Rewrite the edge only when BOTH endpoints are in the current scope.
+      const r = await pool.query(
+        `UPDATE memory_edges e
          SET relation = 'supersedes', updated_at = NOW()
-         WHERE from_memory_id = $1 AND to_memory_id = $2 AND relation = 'contradicts' AND valid_until IS NULL`,
-        [f.memory_id, f.related_memory_id],
+         FROM memories mf, memories mt
+         WHERE e.from_memory_id = $1 AND e.to_memory_id = $2
+           AND e.relation = 'contradicts' AND e.valid_until IS NULL
+           AND mf.id = e.from_memory_id AND mt.id = e.to_memory_id
+           AND mf.project_scope = $3 AND mt.project_scope = $3`,
+        [f.memory_id, f.related_memory_id, scope],
       );
-      applied.push({ memory_id: f.memory_id, action: 'fix_edge_type' });
+      if ((r.rowCount ?? 0) > 0) applied.push({ memory_id: f.memory_id, action: 'fix_edge_type' });
     }
   }
   return applied;

@@ -1,4 +1,5 @@
 import type { LintFinding } from '../types.js';
+import { currentScope } from '../../env.js';
 
 /**
  * Contradictions: rows where `relation='contradicts'`, both endpoints are
@@ -22,7 +23,10 @@ import type { LintFinding } from '../types.js';
  */
 
 export interface PoolLike {
-  query<T = unknown>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
+  query<T = unknown>(
+    sql: string,
+    params?: unknown[],
+  ): Promise<{ rows: T[]; rowCount?: number | null }>;
 }
 
 interface ContradictionRow {
@@ -54,16 +58,19 @@ const BASE_SQL = `
 
 export async function findContradictions(
   pool: PoolLike,
-  opts: { limit: number; memoryId?: string },
+  opts: { limit: number; memoryId?: string; scope?: string },
 ): Promise<LintFinding[]> {
   const params: unknown[] = [];
-  let scope = '';
+  let filters = '';
   if (opts.memoryId) {
     params.push(opts.memoryId);
-    scope = ` AND (e.from_memory_id = $${params.length} OR e.to_memory_id = $${params.length})`;
+    filters += ` AND (e.from_memory_id = $${params.length} OR e.to_memory_id = $${params.length})`;
   }
+  // claw-nyxd: both endpoints must be in the current scope.
+  params.push(opts.scope ?? currentScope());
+  filters += ` AND m1.project_scope = $${params.length} AND m2.project_scope = $${params.length}`;
   params.push(opts.limit);
-  const query = `${BASE_SQL}${scope}\n  ORDER BY e.confidence DESC\n  LIMIT $${params.length}`;
+  const query = `${BASE_SQL}${filters}\n  ORDER BY e.confidence DESC\n  LIMIT $${params.length}`;
 
   const rows = await pool.query<ContradictionRow>(query, params);
   return rows.rows.map((r) => {
@@ -77,9 +84,7 @@ export async function findContradictions(
       action = 'human_review';
     }
     const topic =
-      Array.isArray(r.from_topics) && r.from_topics.length > 0
-        ? r.from_topics[0]
-        : undefined;
+      Array.isArray(r.from_topics) && r.from_topics.length > 0 ? r.from_topics[0] : undefined;
     return {
       check: 'contradictions',
       memory_id: r.from_id,

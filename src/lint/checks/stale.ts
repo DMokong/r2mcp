@@ -1,5 +1,6 @@
 import type { LintFinding } from '../types.js';
 import type { PoolLike } from './contradictions.js';
+import { currentScope } from '../../env.js';
 
 /**
  * Stale memories: older than `since_days` (default 90), with zero incoming
@@ -31,6 +32,7 @@ const STALE_SQL = `
   FROM memories m
   WHERE m.type != 'archived'
     AND m.tier != 'preferences'
+    AND m.project_scope = $3
     AND m.created_at < NOW() - ($1 || ' days')::interval
     AND NOT EXISTS (
       SELECT 1 FROM memory_edges ie
@@ -42,9 +44,13 @@ const STALE_SQL = `
 
 export async function findStale(
   pool: PoolLike,
-  opts: { sinceDays: number; limit: number },
+  opts: { sinceDays: number; limit: number; scope?: string },
 ): Promise<LintFinding[]> {
-  const rows = await pool.query<StaleRow>(STALE_SQL, [opts.sinceDays, opts.limit]);
+  const rows = await pool.query<StaleRow>(STALE_SQL, [
+    opts.sinceDays,
+    opts.limit,
+    opts.scope ?? currentScope(),
+  ]);
   return rows.rows.map((r) => ({
     check: 'stale',
     memory_id: r.id,

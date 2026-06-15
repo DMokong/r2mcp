@@ -1,5 +1,6 @@
 import { getPool } from '../db.js';
 import { fingerprint } from '../fingerprint.js';
+import { currentScope } from '../env.js';
 
 export interface RejectInput {
   id: string;
@@ -12,16 +13,20 @@ export interface RejectResult {
   message: string;
 }
 
-export async function reject(input: RejectInput): Promise<RejectResult> {
+export async function reject(
+  input: RejectInput,
+  scope: string = currentScope(),
+): Promise<RejectResult> {
   const pool = getPool();
   const { id, reason } = input;
 
-  // Mark the original memory's type as 'rejection' (matching schema CHECK constraint)
+  // Mark the original memory's type as 'rejection' (matching schema CHECK
+  // constraint). Scope-restricted so a project can't reject another's memory.
   const updateResult = await pool.query(
     `UPDATE memories SET type = 'rejection', updated_at = NOW()
-     WHERE id = $1
+     WHERE id = $1 AND project_scope = $2
      RETURNING id, tier, topics, people`,
-    [id],
+    [id, scope],
   );
 
   if (updateResult.rows.length === 0) {
@@ -30,13 +35,21 @@ export async function reject(input: RejectInput): Promise<RejectResult> {
 
   const original = updateResult.rows[0];
 
-  // Store the rejection reason as a new memory entry
+  // Store the rejection reason as a new memory entry in the same scope.
   const fp = fingerprint(reason);
   const reasonResult = await pool.query(
-    `INSERT INTO memories (content, tier, type, section, topics, people, fingerprint)
-     VALUES ($1, $2, 'rejection', $3, $4, $5, $6)
+    `INSERT INTO memories (content, tier, type, section, topics, people, fingerprint, project_scope)
+     VALUES ($1, $2, 'rejection', $3, $4, $5, $6, $7)
      RETURNING id`,
-    [reason, original.tier, `rejection-of:${id}`, original.topics || [], original.people || [], fp],
+    [
+      reason,
+      original.tier,
+      `rejection-of:${id}`,
+      original.topics || [],
+      original.people || [],
+      fp,
+      scope,
+    ],
   );
 
   return {

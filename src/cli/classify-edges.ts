@@ -43,7 +43,7 @@ import {
   ProviderUnavailableError,
   type ProviderName,
 } from '../providers/index.js';
-import { loadEnvFile } from '../env.js';
+import { loadEnvFile, currentScope } from '../env.js';
 
 // Load .env from project root — launchd-spawned subprocesses don't inherit
 // shell env, so OTEL_ENABLED + DB URL + provider keys must be loaded here
@@ -120,7 +120,8 @@ async function main() {
           summaryWriter,
           concurrencyLimit: provider?.concurrencyLimit ?? 1,
           providerName: provider?.name,
-          findCandidatePairs: (opts) => findCandidatePairs(pool, opts),
+          findCandidatePairs: (opts) =>
+            findCandidatePairs(pool, { ...opts, scope: currentScope() }),
           fetchMemoryById: async (id) => {
             const r = await pool.query<MemoryForClassify>(
               'SELECT id, content, type FROM memories WHERE id = $1',

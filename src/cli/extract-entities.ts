@@ -39,7 +39,7 @@ import {
   ProviderUnavailableError,
   type ProviderName,
 } from '../providers/index.js';
-import { loadEnvFile } from '../env.js';
+import { loadEnvFile, currentScope } from '../env.js';
 
 // Load .env from project root — launchd-spawned subprocesses don't inherit
 // shell env, so OTEL_ENABLED + DB URL + provider keys must be loaded here
@@ -138,6 +138,7 @@ async function main() {
       dataDir: args.dataDir,
       maxCostUsd: args.maxCostUsd,
       contextTopN: args.contextTopN,
+      scope: currentScope(),
       sinceDays: args.sinceDays,
       full: args.full,
       resumeFrom: args.resume,

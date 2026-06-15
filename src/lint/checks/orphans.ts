@@ -1,5 +1,6 @@
 import type { LintFinding } from '../types.js';
 import type { PoolLike } from './contradictions.js';
+import { currentScope } from '../../env.js';
 
 /**
  * Orphans: memories with zero edges in either direction, older than 30 days,
@@ -23,6 +24,7 @@ const ORPHANS_SQL = `
   FROM memories m
   WHERE m.type != 'archived'
     AND m.created_at < NOW() - INTERVAL '30 days'
+    AND m.project_scope = $2
     AND NOT EXISTS (
       SELECT 1 FROM memory_edges e
       WHERE (e.from_memory_id = m.id OR e.to_memory_id = m.id)
@@ -32,8 +34,11 @@ const ORPHANS_SQL = `
   LIMIT $1
 `;
 
-export async function findOrphans(pool: PoolLike, opts: { limit: number }): Promise<LintFinding[]> {
-  const rows = await pool.query<OrphanRow>(ORPHANS_SQL, [opts.limit]);
+export async function findOrphans(
+  pool: PoolLike,
+  opts: { limit: number; scope?: string },
+): Promise<LintFinding[]> {
+  const rows = await pool.query<OrphanRow>(ORPHANS_SQL, [opts.limit, opts.scope ?? currentScope()]);
   return rows.rows.map((r) => ({
     check: 'orphans',
     memory_id: r.id,
