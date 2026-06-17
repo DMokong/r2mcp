@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pg from 'pg';
 import { dumpEdgesJsonWithClient, dumpEdgesSidecarTool } from '../../src/tools/dump-edges-sidecar.js';
+import { pickTestUrl } from '../test-db-guard.js';
 
 /**
  * AC2 anti-hardcoded-default: the MCP tool wrapper rejects calls that
@@ -26,26 +27,10 @@ describe('dump_edges_sidecar input validation', () => {
   });
 });
 
-// Defense-in-depth (claw-0vsn): only run against an explicit test DB or a
-// local *test* database. Never against production, even if R2MCP_DATABASE_URL
-// is set. To opt in, export R2MCP_TEST_DATABASE_URL.
-function pickSafeTestDb(): string | undefined {
-  const explicit = process.env.R2MCP_TEST_DATABASE_URL;
-  if (explicit) return explicit;
-  const ambient = process.env.R2MCP_DATABASE_URL;
-  if (!ambient) return undefined;
-  try {
-    const parsed = new URL(ambient);
-    const isLocal = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
-    const dbName = parsed.pathname.replace(/^\//, '');
-    if (isLocal && /test/i.test(dbName)) return ambient;
-  } catch {
-    /* fall through */
-  }
-  return undefined;
-}
-
-const TEST_DB = pickSafeTestDb();
+// Defense-in-depth (claw-0vsn / claw-i6td.2): resolve the safe test DB via the
+// shared guard. The global setupFile has already scrubbed R2MCP_DATABASE_URL to
+// a safe value, so pickTestUrl() never returns production here.
+const TEST_DB = pickTestUrl();
 
 describe.skipIf(!TEST_DB)('dump_edges_sidecar round-trip', () => {
   let client: pg.Client;
@@ -63,14 +48,14 @@ describe.skipIf(!TEST_DB)('dump_edges_sidecar round-trip', () => {
     const m1 = await client.query(
       `INSERT INTO memories (content, tier, type, section, fingerprint)
        VALUES ($1, 'preferences', 'observation', 'sidecar-test', 'fp-sidecar-1')
-       ON CONFLICT (fingerprint) DO UPDATE SET content = EXCLUDED.content
+       ON CONFLICT (project_scope, fingerprint) DO UPDATE SET content = EXCLUDED.content
        RETURNING id`,
       ['sidecar-test memory 1'],
     );
     const m2 = await client.query(
       `INSERT INTO memories (content, tier, type, section, fingerprint)
        VALUES ($1, 'preferences', 'observation', 'sidecar-test', 'fp-sidecar-2')
-       ON CONFLICT (fingerprint) DO UPDATE SET content = EXCLUDED.content
+       ON CONFLICT (project_scope, fingerprint) DO UPDATE SET content = EXCLUDED.content
        RETURNING id`,
       ['sidecar-test memory 2'],
     );
