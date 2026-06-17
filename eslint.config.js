@@ -64,9 +64,12 @@ export default [
       // TS-recommended baseline — pull in the rule set without the type-check
       // mode (which requires a parserOptions.project and is much slower).
       ...tsPlugin.configs.recommended.rules,
-      // Relaxed to warn (see header comment) — keep them visible without
-      // failing the lint command for existing code.
-      '@typescript-eslint/no-unused-vars': 'warn',
+      // Unused vars are an error, but `_`-prefixed names are the convention
+      // for intentionally-unused args/vars/caught-errors (callbacks etc.).
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-empty-object-type': 'warn',
       'prefer-const': 'warn',
@@ -100,9 +103,17 @@ export default [
     rules: {
       'prefer-const': 'warn',
       'no-empty': 'warn',
-      'no-unused-vars': 'warn',
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
       'no-useless-assignment': 'warn',
       'no-console': 'off',
+    },
+  },
+  {
+    // Test files legitimately use `any` for mock/fixture casts (e.g. partial
+    // pg result shapes, spawn mocks). Library code stays any-free.
+    files: ['tests/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
   // Prettier compat MUST come last — disables any stylistic rules that

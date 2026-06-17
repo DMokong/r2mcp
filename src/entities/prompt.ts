@@ -11,11 +11,12 @@ export type ParseResult =
   | { ok: false; error: string };
 
 function isMatched(x: unknown): x is ExtractionMatched {
+  const r = x as Record<string, unknown>;
   return (
     typeof x === 'object' &&
     x !== null &&
-    typeof (x as any).canonical_name === 'string' &&
-    typeof (x as any).confidence === 'number'
+    typeof r.canonical_name === 'string' &&
+    typeof r.confidence === 'number'
   );
 }
 
@@ -24,7 +25,7 @@ function clamp01(n: number): number {
 }
 
 export function parseExtractionResponse(raw: string): ParseResult {
-  let json: any;
+  let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch (e) {
@@ -33,13 +34,14 @@ export function parseExtractionResponse(raw: string): ParseResult {
 
   if (typeof json !== 'object' || json === null)
     return { ok: false, error: 'response is not an object' };
-  if (!Array.isArray(json.matched)) return { ok: false, error: 'missing or non-array `matched`' };
-  if (!Array.isArray(json.new_entities))
+  const root = json as { matched?: unknown; new_entities?: unknown };
+  if (!Array.isArray(root.matched)) return { ok: false, error: 'missing or non-array `matched`' };
+  if (!Array.isArray(root.new_entities))
     return { ok: false, error: 'missing or non-array `new_entities`' };
 
   const warnings: string[] = [];
   const matched: ExtractionMatched[] = [];
-  for (const m of json.matched) {
+  for (const m of root.matched) {
     if (!isMatched(m)) {
       warnings.push(`dropped malformed matched entry: ${JSON.stringify(m).slice(0, 100)}`);
       continue;
@@ -51,7 +53,7 @@ export function parseExtractionResponse(raw: string): ParseResult {
   }
 
   const new_entities: ExtractionNewEntity[] = [];
-  for (const n of json.new_entities) {
+  for (const n of root.new_entities) {
     if (typeof n !== 'object' || n === null) {
       warnings.push(`dropped non-object new_entity`);
       continue;

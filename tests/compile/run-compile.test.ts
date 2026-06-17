@@ -8,7 +8,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runCompile, type CompileFs } from '../../src/compiler/run.js';
 import {
-  emitFrontmatter,
   parseFrontmatter,
   extractHeaders,
   levenshteinRatio,

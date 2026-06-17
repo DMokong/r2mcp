@@ -14,13 +14,7 @@ import { compileTier } from './tier.js';
 import { compileTopic } from './topic.js';
 import { topicToSlug } from './clustering.js';
 import { emitFrontmatter } from './frontmatter.js';
-import {
-  computeStaleFiles,
-  deleteStaleFiles,
-  manifestPath,
-  readManifest,
-  writeManifest,
-} from './manifest.js';
+import { computeStaleFiles, manifestPath, readManifest, writeManifest } from './manifest.js';
 import type {
   CompileFrontmatter,
   CompileManifest,

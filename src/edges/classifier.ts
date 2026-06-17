@@ -81,12 +81,9 @@ export async function runClassifier(opts: RunOptions, deps: ClassifierDeps): Pro
   };
 
   if (opts.dryRun) {
-    let estimate = 0;
-    if (deps.estimateCost) {
-      estimate = await deps.estimateCost(candidates);
-    } else {
-      estimate = candidates.length * 0.018;
-    }
+    const estimate = deps.estimateCost
+      ? await deps.estimateCost(candidates)
+      : candidates.length * 0.018;
     process.stdout.write(
       `Estimated cost for full run: $${estimate.toFixed(2)} (${candidates.length} candidate pairs after pre-filter)\n`,
     );
