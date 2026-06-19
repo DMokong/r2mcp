@@ -217,6 +217,20 @@ a checkout; consumers configuring via `.mcp.json env` don't need one.
 | `could not spawn 'claude' (ENOENT)` on classifier/compile runs | The claude CLI isn't on the spawning process's PATH. Set `R2MCP_CLAUDE_BIN` to its absolute path. |
 | Fresh credentials rejected right after a Supabase password reset | The pooler caches auth-rejection state for 30–60s. Wait a minute and retry before assuming the rotation failed. |
 
+## Running tests
+
+The suite mixes pure-unit tests with DB-integration tests that need a local PostgreSQL + pgvector. CI runs the same flow on every push/PR (`.github/workflows/ci.yml`).
+
+```bash
+docker compose up -d        # starts Postgres + provisions r2mcp_test with pgvector
+npm test                    # vitest — schema is applied automatically per run
+```
+
+- **Test database:** the suite runs against `r2mcp_test`, which `docker compose up` provisions on first init (`docker/init-test-db.sql`). If you already have a Postgres volume, create it once: `createdb r2mcp_test && psql -d r2mcp_test -c "CREATE EXTENSION vector"`.
+- **Isolation guard:** a vitest `setupFile` forces `R2MCP_DATABASE_URL` to a safe local test DB before every test module, so the suite can **never** touch a production database — even if your shell or `.env` points at one (it warns and overrides). To point tests at a specific DB, set `R2MCP_TEST_DATABASE_URL`; a *remote* test DB additionally requires `R2MCP_ALLOW_REMOTE_TEST_DB=1`.
+- **Live-LLM tests self-skip:** tests that need real embeddings or an LLM provider are skipped unless `R2MCP_OPENROUTER_API_KEY` (or a provider) is set, so the default run is offline and deterministic.
+- **Gates:** `npm run lint` (eslint, zero warnings), `npm run format:check` (prettier), `npm run build` (tsc + schema copy).
+
 ## Memory Tiers
 
 | Tier | What goes here | Auto-archived after |

@@ -14,6 +14,8 @@ services:
       - "5432:5432"
     volumes:
       - r2mcp_pgdata:/var/lib/postgresql/data
+      # Provisions r2mcp_test + pgvector on first init (claw-i6td.3).
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U r2mcp -d r2mcp"]
       interval: 5s

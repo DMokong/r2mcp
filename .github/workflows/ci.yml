@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: r2mcp_test
+          POSTGRES_USER: r2mcp
+          POSTGRES_PASSWORD: r2mcp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U r2mcp -d r2mcp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # The structural guard (claw-i6td.2) routes all tests here; it is a local
+      # *test* DB so no R2MCP_ALLOW_REMOTE_TEST_DB is needed.
+      R2MCP_TEST_DATABASE_URL: postgresql://r2mcp:r2mcp@localhost:5432/r2mcp_test
+      # No R2MCP_OPENROUTER_API_KEY in CI — live-LLM/embedding tests self-skip.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Enable pgvector in the test database
+        run: |
+          PGPASSWORD=r2mcp psql -h localhost -U r2mcp -d r2mcp_test \
+            -c "CREATE EXTENSION IF NOT EXISTS vector"
+
+      - name: Build (tsc + schema copy)
+        run: npm run build
+
+      - name: Lint (zero warnings)
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Test (with coverage)
+        run: npx vitest run --coverage --testTimeout=30000
