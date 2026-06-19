@@ -88,6 +88,21 @@ describe('scope isolation (claw-nyxd) — five guarantees', () => {
     expect(sAll.count).toBe(2);
   });
 
+  it('P0a: recall({scope}) reads a SPECIFIC other scope (+ global) without changing the env scope', async () => {
+    await addIn('projectA', 'alpha gadget');
+    await addIn('ai-landscape', 'landscape gadget extract');
+    await addIn('global', 'shared gadget');
+
+    // Operating in projectA, explicitly read the ai-landscape scope. Should see
+    // ai-landscape + global, NOT projectA — proves one process can read another
+    // scope's wiki corpus without restart (the LLM-Wiki producer/reader split).
+    const r = await withScope('projectA', () => recall({ query: 'gadget', scope: 'ai-landscape' }));
+    expect(r.results.map((x) => x.content).sort()).toEqual(
+      ['landscape gadget extract', 'shared gadget'].sort(),
+    );
+    expect(r.results.map((x) => x.content)).not.toContain('alpha gadget');
+  });
+
   it('G4: dedup is per-scope — identical content in two scopes makes two rows', async () => {
     const content = 'the exact same insight verbatim';
     const a = await addIn('projectA', content);

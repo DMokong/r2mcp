@@ -68,6 +68,12 @@ server.tool(
       date: z.string().optional(),
     }),
     target_id: z.string().optional(),
+    scope: z
+      .string()
+      .optional()
+      .describe(
+        'Write to a specific project scope instead of the default (e.g. "ai-landscape" for digest extracts). Defaults to the server scope.',
+      ),
   },
   async (args) => {
     const result = await withToolSpan(
@@ -86,7 +92,7 @@ server.tool(
             target_id: args.target_id,
           },
           PROJECT_ROOT,
-          CURRENT_SCOPE,
+          args.scope ?? CURRENT_SCOPE,
         );
         span.setAttribute('dedup_triggered', r.dedup ?? false);
         return r;
@@ -148,6 +154,12 @@ server.tool(
       .describe(
         'Search across ALL project scopes instead of the current scope + global (default: false).',
       ),
+    scope: z
+      .string()
+      .optional()
+      .describe(
+        'Read a SPECIFIC project scope (+ global) instead of the server scope — e.g. "ai-landscape" to read that wiki corpus. Ignored when all_scopes is true.',
+      ),
   },
   async (args) => {
     const queryStr = args.query ?? '';
@@ -172,6 +184,7 @@ server.tool(
           confidence_threshold: args.confidence_threshold,
           entity: args.entity,
           all_scopes: args.all_scopes,
+          scope: args.scope,
         });
         span.setAttribute('result_count', r.total_results ?? 0);
         span.setAttribute('search_mode', r.search_mode ?? 'unknown');

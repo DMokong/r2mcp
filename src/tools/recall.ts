@@ -95,6 +95,13 @@ export interface RecallInput {
   entity?: string;
   /** claw-nyxd: when true, search across ALL project scopes (default: current + global). */
   all_scopes?: boolean;
+  /**
+   * claw-sdcn (P0a): read a SPECIFIC scope instead of the env's current scope.
+   * Reads `scope` + global (so shared knowledge stays visible). Lets one process
+   * read another scope's corpus — e.g. compile/read the 'ai-landscape' wiki from
+   * a global-scope server. Ignored when all_scopes is true.
+   */
+  scope?: string;
 }
 
 // Internal type with pre-tier-weight score and raw embedding for MMR computation
@@ -450,15 +457,18 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
     confidence_threshold = DEFAULT_CONFIDENCE_THRESHOLD,
     entity,
     all_scopes = false,
+    scope,
   } = input;
 
   const pool = getPool();
 
   // claw-nyxd: default reads union the current scope with 'global' (shared
   // knowledge). all_scopes=true bypasses the filter entirely (null = no clause).
+  // claw-sdcn (P0a): an explicit `scope` reads that scope + global instead of
+  // the env's current scope.
   const scopes: string[] | null = all_scopes
     ? null
-    : Array.from(new Set([currentScope(), DEFAULT_SCOPE]));
+    : Array.from(new Set([scope ?? currentScope(), DEFAULT_SCOPE]));
 
   // SPEC-046: resolve entity BEFORE retrieval. The resolution is the cheapest
   // possible signal — a single indexed lookup on entities.normalized_name.
