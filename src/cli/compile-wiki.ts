@@ -101,8 +101,10 @@ async function loadMemoriesFromDb(scope: CliArgs): Promise<MemoryForCompile[]> {
     topics: string[];
     people: string[];
     created_at: string;
+    event_date: string | null;
   }>(
-    `SELECT id, tier, type, content, topics, people, created_at::text AS created_at
+    `SELECT id, tier, type, content, topics, people, created_at::text AS created_at,
+            date::text AS event_date
      FROM memories WHERE ${where}
      ORDER BY id`,
     params,
@@ -115,6 +117,7 @@ async function loadMemoriesFromDb(scope: CliArgs): Promise<MemoryForCompile[]> {
     topics: r.topics ?? [],
     people: r.people ?? [],
     created_at: r.created_at,
+    event_date: r.event_date,
   }));
 
   // Attach inbound edges for prose framing (B.AC7). Only fetch edges that
