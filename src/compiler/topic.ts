@@ -13,7 +13,7 @@
  * Open Questions content.
  */
 
-import { memoriesForTopic } from './clustering.js';
+import { effectiveDate, memoriesForTopic } from './clustering.js';
 import { topicSectionUserPrompt, topicSystemPrompt } from './prompts.js';
 import { withLLMCallSpan } from '../telemetry.js';
 import type { CompileSectionResult, CompileTopicInput, MemoryForCompile } from './types.js';
@@ -92,8 +92,12 @@ export async function compileTopic(input: CompileTopicInput): Promise<CompileSec
     headers.push('## Timeline');
     lines.push('## Timeline', '');
     for (const m of relevant) {
-      const date = (m.created_at || '').slice(0, 10) || 'unknown';
-      const excerpt = m.content.length > 120 ? m.content.slice(0, 117) + '...' : m.content;
+      const date = (effectiveDate(m) || '').slice(0, 10) || 'unknown';
+      // Collapse internal whitespace (newlines, runs of spaces) so a multi-line
+      // memory body stays on a single Timeline bullet instead of spilling into
+      // orphaned continuation rows.
+      const flat = m.content.replace(/\s+/g, ' ').trim();
+      const excerpt = flat.length > 120 ? flat.slice(0, 117) + '...' : flat;
       lines.push(`- ${date} — <m:${m.id}> ${excerpt}`);
       sourceIds.add(m.id);
     }

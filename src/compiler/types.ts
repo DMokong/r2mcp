@@ -15,6 +15,14 @@ export interface MemoryForCompile {
   topics: string[];
   people: string[];
   created_at: string;
+  /**
+   * Content/occurrence date (the `date` column) when the memory records a dated
+   * event distinct from when the row was written. Preferred over `created_at`
+   * for Timeline display and chronological topic ordering; falls back to
+   * `created_at` when null. Backfilled corpora set this so the Timeline reflects
+   * real history rather than the bulk-insert date.
+   */
+  event_date?: string | null;
   /** Optional inbound supersedes/contradicts edges for prose framing (B.R9). */
   edges?: EdgeForCompile[];
 }

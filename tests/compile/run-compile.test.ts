@@ -193,6 +193,58 @@ describe('runCompile — B.AC4: topic mode produces 4 sections', () => {
     expect(content).toMatch(/2026-05-01.*<m:m1>/);
     expect(content).toMatch(/2026-05-03.*<m:m2>/);
   });
+
+  it('keeps each Timeline entry on a single line when memory content is multi-line', async () => {
+    const fs = mockFs();
+    const provider = mockProvider('claude-code');
+    // Multi-line content > 120 chars: the naive slice(0,117) would embed the
+    // memory's own newlines into the Timeline bullet, splitting it across rows.
+    const multiline =
+      'Header line one\nbody line two\n' + 'x'.repeat(120);
+    const memories = [
+      memory('m1', 'project-context', ['wiki-mode'], multiline, 'context', '2026-05-02'),
+    ];
+    await runCompile(
+      baseOpts({ topic: 'wiki-mode' }),
+      { provider, loadMemories: async () => memories, fs },
+    );
+    const content = fs.files.get(`${COMPILED_DIR}/topics/wiki-mode.md`)!;
+    // The whole excerpt must live on the single bullet line for m1 — newlines
+    // collapsed to spaces, no orphaned continuation rows.
+    const bullet = content
+      .split('\n')
+      .find((l) => l.includes('<m:m1>') && l.includes('2026-05-02'));
+    expect(bullet).toBeDefined();
+    expect(bullet).toContain('Header line one body line two');
+  });
+
+  it('prefers event_date over created_at for Timeline dates and chronological order', async () => {
+    const fs = mockFs();
+    const provider = mockProvider('claude-code');
+    // Both rows share a bulk-insert created_at; event_date carries real history.
+    const memories: MemoryForCompile[] = [
+      {
+        id: 'm2', tier: 'project-context', type: 'context', content: 'newer-inserted older-event',
+        topics: ['wiki-mode'], people: [], created_at: '2026-06-24T00:00:00Z', event_date: '2026-03-09',
+      },
+      {
+        id: 'm1', tier: 'project-context', type: 'context', content: 'newer-inserted newer-event',
+        topics: ['wiki-mode'], people: [], created_at: '2026-06-24T00:00:00Z', event_date: '2026-05-01',
+      },
+    ];
+    await runCompile(
+      baseOpts({ topic: 'wiki-mode' }),
+      { provider, loadMemories: async () => memories, fs },
+    );
+    const content = fs.files.get(`${COMPILED_DIR}/topics/wiki-mode.md`)!;
+    // Timeline shows the event dates, never the bulk-insert created_at.
+    expect(content).toMatch(/2026-03-09.*<m:m2>/);
+    expect(content).toMatch(/2026-05-01.*<m:m1>/);
+    expect(content).not.toContain('2026-06-24');
+    // Within the Timeline, ordered by event_date ascending: m2 (03-09) before m1 (05-01).
+    const timeline = content.slice(content.indexOf('## Timeline'));
+    expect(timeline.indexOf('<m:m2>')).toBeLessThan(timeline.indexOf('<m:m1>'));
+  });
 });
 
 describe('runCompile — B.AC6: cost cap exits cleanly with partial state', () => {

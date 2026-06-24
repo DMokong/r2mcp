@@ -42,14 +42,25 @@ export function clusterByTopic(memories: MemoryForCompile[]): MemoryCluster[] {
 }
 
 /**
+ * The date a memory should sort and display by: its content/occurrence date
+ * (`event_date`) when present, else the row's `created_at`. Lets a backfilled
+ * corpus surface real history instead of the bulk-insert timestamp.
+ */
+export function effectiveDate(m: MemoryForCompile): string {
+  return m.event_date || m.created_at;
+}
+
+/**
  * For topic-mode compile: filter to memories tagged with `topic`, sort by
- * `created_at` ascending (so Timeline section flows naturally), tiebreak by id.
+ * effective date ascending (so Timeline section flows naturally), tiebreak by id.
  */
 export function memoriesForTopic(memories: MemoryForCompile[], topic: string): MemoryForCompile[] {
   return memories
     .filter((m) => m.topics.includes(topic))
     .sort((a, b) => {
-      if (a.created_at !== b.created_at) return a.created_at.localeCompare(b.created_at);
+      const da = effectiveDate(a);
+      const db = effectiveDate(b);
+      if (da !== db) return da.localeCompare(db);
       return a.id.localeCompare(b.id);
     });
 }
