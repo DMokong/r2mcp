@@ -93,14 +93,14 @@ async function setup() {
     console.log('\nNext steps:');
     console.log('  1. Add to .mcp.json:');
     console.log('     "memory": {');
-    console.log('       "command": "node",');
-    console.log('       "args": ["<path-to-r2mcp>/dist/index.js"],');
+    console.log('       "command": "npx",');
+    console.log('       "args": ["-y", "r2mcp"],');
     console.log(
-      '       "env": { "R2MCP_DATABASE_URL": "<your-url>", "R2MCP_OPENROUTER_API_KEY": "<your-key>" }',
+      '       "env": { "R2MCP_DATABASE_URL": "<your-url>", "R2MCP_OPENROUTER_API_KEY": "<your-key>", "R2MCP_SCOPE": "<project-name>" }',
     );
     console.log('     }');
-    console.log('  2. Build: npm run build');
-    console.log('  3. Restart Claude Code to pick up the new MCP server');
+    console.log('     (from a repo clone instead: "command": "node", "args": ["<path>/dist/index.js"] after npm run build)');
+    console.log('  2. Restart Claude Code to pick up the new MCP server');
   } finally {
     client.release();
     await pool.end();

@@ -5,6 +5,8 @@ entries reference the internal spec numbers that shipped them.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-03
+
 ### Added
 
 - **Project-scope namespacing** (claw-nyxd): multiple projects can share one
@@ -18,6 +20,27 @@ entries reference the internal spec numbers that shipped them.
   and swaps the `unique(fingerprint)` constraint for `(project_scope,
   fingerprint)`. The server logs its resolved scope at startup. See README →
   Cross-Project Memory.
+- **Per-call scope overrides** (claw-sdcn.1): `remember` accepts a `scope`
+  parameter to write into a specific project scope, and `recall` accepts
+  `scope` to read a specific scope (+ `global`) — one connected server can
+  service multiple corpora without a restart.
+- **Backup & restore CLI** (claw-i6td.4): paired JSONL export/import —
+  `npm run db:export -- [--out=<file>] [--scope=<name>]` (all scopes by
+  default) and `npm run db:import -- <file> [--dry-run]` (idempotent; per-row
+  errors never abort; exit 1 if any row failed). Format v1 envelopes all four
+  tables in FK-safe order with UUIDs and embeddings verbatim. See README →
+  Operations: backup & restore.
+- **Versioned schema migrations** (claw-i6td.5): `schema_migrations` table +
+  numbered migrations under `migrations/`; `npm run migrate` applies pending
+  migrations and the server verifies the schema version at boot.
+- GitHub Actions CI with disposable test-DB provisioning, structural
+  prod-DB test isolation (destructive suites refuse non-test databases), and
+  a zero-warnings eslint gate (claw-i6td.1–.3, .6).
+
+### Fixed
+
+- `compile` Timeline sections order by `event_date` (not row `created_at`)
+  and render single-line excerpts (PR #5).
 
 ## [0.2.0] — 2026-06-13
 
