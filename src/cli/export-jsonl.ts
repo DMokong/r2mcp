@@ -18,7 +18,7 @@ import '../instrumentation.js';
 
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { initDb, getPool, closeDb } from '../db.js';
+import { connectDb, getPool, closeDb } from '../db.js';
 import { loadEnvFile } from '../env.js';
 import { exportToLines, type ExportHeader } from '../backup/exporter.js';
 
@@ -39,7 +39,9 @@ function parseArgs(argv: string[]): CliArgs {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  await initDb();
+  // connectDb (not initDb): a backup tool must work against a behind-version
+  // database — that is exactly when you want an export (pre-upgrade, old DB).
+  await connectDb();
   const lines = await exportToLines(getPool(), { scope: args.scope });
   const header = JSON.parse(lines[0]) as ExportHeader;
 

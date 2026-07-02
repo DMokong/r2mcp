@@ -7,20 +7,21 @@
  * What it does:
  * 1. Connects to R2MCP_DATABASE_URL
  * 2. Enables the pgvector extension
- * 3. Runs schema.sql (CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS)
+ * 3. Applies pending numbered migrations (src/migrations/NNN_name.sql) and
+ *    records them in schema_migrations (claw-i6td.5)
  * 4. Verifies the schema by running a quick sanity query
  *
- * Safe to re-run: all DDL uses IF NOT EXISTS / IF EXISTS. No data is modified.
+ * Safe to re-run: pending-only + advisory-locked. No data is modified.
  */
 
 import pg from 'pg';
 import pgvector from 'pgvector/pg';
-import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateDatabaseUrl, classifySetupError, redactDatabaseUrl } from './setup-helpers.js';
 import { loadEnvFile } from '../env.js';
 import { MISSING_DATABASE_URL_MESSAGE } from '../db.js';
+import { applyMigrations } from '../migrations.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -61,12 +62,17 @@ async function setup() {
     // 2. Register pgvector types
     await pgvector.registerTypes(client);
 
-    // 3. Run schema.sql
-    const schemaPath = resolve(__dirname, '..', 'schema.sql');
-    const schema = readFileSync(schemaPath, 'utf-8');
-    console.log('→ Applying schema.sql...');
-    await client.query(schema);
-    console.log('  ✓ Schema applied (idempotent)');
+    // 3. Apply numbered migrations (claw-i6td.5). Pending-only + advisory-
+    //    locked; an existing pre-migration deployment adopts via the
+    //    idempotent 001_baseline and simply gets its version recorded.
+    console.log('→ Applying migrations...');
+    const applyResult = await applyMigrations(pool);
+    if (applyResult.applied.length === 0) {
+      console.log(`  ✓ Already at schema version ${applyResult.to} — nothing to apply`);
+    } else {
+      for (const m of applyResult.applied) console.log(`  ✓ applied ${m.version} (${m.name})`);
+      console.log(`  ✓ Schema now at version ${applyResult.to}`);
+    }
 
     // 4. Sanity check
     const result = await client.query(`
@@ -77,7 +83,9 @@ async function setup() {
     const { table_exists, index_count } = result.rows[0];
 
     if (table_exists !== 1) {
-      throw new Error('memories table was not created — schema.sql may have failed silently');
+      throw new Error(
+        'memories table was not created — the baseline migration may have failed silently',
+      );
     }
 
     console.log(`  ✓ memories table present, ${index_count} indexes`);

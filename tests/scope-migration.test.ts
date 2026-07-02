@@ -6,12 +6,15 @@ import type pg from 'pg';
 
 // claw-nyxd.1: the scope migration must apply idempotently to a LIVE table that
 // already holds rows written before the project_scope column existed (the ~70
-// production ClaudeClaw memories). schema.sql IS the migration system — it
-// re-executes on every server boot — so this proves: existing rows backfill to
+// production ClaudeClaw memories). The baseline migration (former schema.sql,
+// now migrations/001_baseline.sql — claw-i6td.5) carries this DDL, so this proves: existing rows backfill to
 // the 'global' default, the per-scope composite unique replaces the old global
 // unique(fingerprint), and a second application is a no-op.
 
-const SCHEMA_SQL = readFileSync(resolve(__dirname, '..', 'src', 'schema.sql'), 'utf-8');
+const SCHEMA_SQL = readFileSync(
+  resolve(__dirname, '..', 'src', 'migrations', '001_baseline.sql'),
+  'utf-8',
+);
 
 let pool: pg.Pool;
 

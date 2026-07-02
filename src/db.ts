@@ -1,10 +1,6 @@
 import pg from 'pg';
 import pgvector from 'pgvector/pg';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { verifySchemaVersion } from './migrations.js';
 
 let pool: pg.Pool | null = null;
 
@@ -31,7 +27,13 @@ export function getPool(): pg.Pool {
   return pool;
 }
 
-export async function initDb(): Promise<void> {
+/**
+ * Version-free connection: pool + pgvector type registration, NO schema-version
+ * gate. For tools that must work against a behind-version database — above all
+ * `db:export`, because the moment you most need a backup is right before an
+ * upgrade or from an old database. Everything else boots via initDb().
+ */
+export async function connectDb(): Promise<void> {
   const p = getPool();
 
   // pgvector.registerTypes requires a client (not pool) for setTypeParser
@@ -41,9 +43,18 @@ export async function initDb(): Promise<void> {
   } finally {
     client.release();
   }
+}
 
-  const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf-8');
-  await p.query(schema);
+/**
+ * Runtime boot: register pgvector types and VERIFY the schema version.
+ * claw-i6td.5: boot no longer executes DDL — `npm run setup` applies the
+ * bundled numbered migrations; initDb fails fast with that pointer when the
+ * database is behind. Drops the owner-privilege requirement at runtime and
+ * makes non-additive migrations expressible.
+ */
+export async function initDb(): Promise<void> {
+  await connectDb();
+  await verifySchemaVersion(getPool());
 }
 
 export async function closeDb(): Promise<void> {
