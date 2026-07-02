@@ -231,6 +231,15 @@ npm test                    # vitest — schema is applied automatically per run
 - **Live-LLM tests self-skip:** tests that need real embeddings or an LLM provider are skipped unless `R2MCP_OPENROUTER_API_KEY` (or a provider) is set, so the default run is offline and deterministic.
 - **Gates:** `npm run lint` (eslint, zero warnings), `npm run format:check` (prettier), `npm run build` (tsc + schema copy).
 
+## Schema migrations
+
+The schema is applied via **numbered migrations** (`src/migrations/NNN_name.sql`, contiguous from `001_baseline.sql`), tracked in a `schema_migrations` table.
+
+- **`npm run setup` applies** pending migrations (advisory-locked, each in its own transaction, recorded per version). Safe to re-run.
+- **Boot only verifies.** The MCP server and every CLI check the schema version at startup and fail fast with `run: npm run setup` when the database is behind — no DDL executes at runtime, so the runtime role no longer needs owner privileges, and non-additive changes are now expressible.
+- **Upgrading an existing deployment:** the first `npm run setup` after this change adopts your database — `001_baseline` is the former idempotent `schema.sql`, so it no-ops through existing objects and records version 1. Run setup once before restarting servers onto the new build.
+- **Adding a migration:** create `src/migrations/002_short_name.sql` (next number, no gaps), then `npm run setup`. Prefer idempotent DDL where possible; each file runs in a transaction.
+
 ## Operations — backup & restore
 
 Your memories are the whole point of this server — treat the database like it can vanish, because on some hosting tiers it can. **Supabase's free tier has no PITR** (point-in-time recovery) and its automated backups are limited; a `DELETE` executed against the wrong database is unrecoverable without your own dumps.

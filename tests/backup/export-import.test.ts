@@ -219,3 +219,21 @@ describe('round-trip restore', () => {
     await expect(importFromLines(bad, { pool })).rejects.toThrow(/version/);
   });
 });
+
+describe('backup availability on behind-version databases', () => {
+  it('connectDb (the export path) succeeds even when schema_migrations is missing', async () => {
+    // A backup tool must work BEFORE an upgrade/adoption — that is when you
+    // want it most. Simulate a pre-adoption deployment and prove the
+    // verify-free connection path still exports.
+    await seedGraph();
+    await pool.query('DROP TABLE IF EXISTS schema_migrations');
+    const { connectDb, closeDb } = await import('../../src/db.js');
+    await expect(connectDb()).resolves.toBeUndefined();
+    const lines = await exportToLines(pool, {});
+    expect(JSON.parse(lines[0]).counts.memories).toBe(2);
+    // restore version state for subsequent test files
+    const { applyMigrations } = await import('../../src/migrations.js');
+    await applyMigrations(pool);
+    void closeDb; // pool shared with setupTestDb — teardown handles it
+  });
+});
