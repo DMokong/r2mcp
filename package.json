@@ -1,7 +1,7 @@
 {
   "name": "r2mcp",
   "version": "0.2.0",
-  "description": "Persistent semantic memory layer for Claude Code \u2014 PostgreSQL + pgvector + OpenRouter embeddings",
+  "description": "Persistent semantic memory layer for Claude Code — PostgreSQL + pgvector + OpenRouter embeddings",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -23,6 +23,8 @@
     "compile-wiki": "tsx src/cli/compile-wiki.ts",
     "lint:memory": "tsx src/cli/lint-memory.ts",
     "migrate": "tsx src/cli/migrate.ts",
+    "db:export": "tsx src/cli/export-jsonl.ts",
+    "db:import": "tsx src/cli/import-jsonl.ts",
     "gauntlet": "vitest run tests/gauntlet.test.ts",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",

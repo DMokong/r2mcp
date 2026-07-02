@@ -231,6 +231,51 @@ npm test                    # vitest — schema is applied automatically per run
 - **Live-LLM tests self-skip:** tests that need real embeddings or an LLM provider are skipped unless `R2MCP_OPENROUTER_API_KEY` (or a provider) is set, so the default run is offline and deterministic.
 - **Gates:** `npm run lint` (eslint, zero warnings), `npm run format:check` (prettier), `npm run build` (tsc + schema copy).
 
+## Operations — backup & restore
+
+Your memories are the whole point of this server — treat the database like it can vanish, because on some hosting tiers it can. **Supabase's free tier has no PITR** (point-in-time recovery) and its automated backups are limited; a `DELETE` executed against the wrong database is unrecoverable without your own dumps.
+
+### JSONL export / import (built in)
+
+```bash
+# Full logical backup — all scopes, all four tables, embeddings included
+npm run db:export -- --out=backup-$(date +%Y-%m-%d).jsonl
+
+# One scope only
+npm run db:export -- --scope=myproject --out=myproject.jsonl
+
+# Restore (idempotent — already-present rows are skipped, so re-runs are safe)
+npm run db:import -- backup-2026-07-02.jsonl
+
+# Validate a backup file without writing anything
+npm run db:import -- backup-2026-07-02.jsonl --dry-run
+```
+
+The export is a single JSONL file: a header line (version, timestamp, per-table counts) followed by one row per line across `memories`, `entities`, `memory_edges`, `memory_entities` in FK-safe order. UUIDs and embeddings are preserved verbatim, so a restore into an empty database reproduces the full memory graph. Import conflicts (same PK, same `(project_scope, fingerprint)`, same edge triple) are skipped, and row-level failures are reported without aborting the run — the exit code is non-zero if any row failed, so scripts notice partial restores.
+
+### pg_dump (belt and braces)
+
+The JSONL export is portable and diffable; `pg_dump` captures everything else (indexes, constraints, roles):
+
+```bash
+pg_dump "$R2MCP_DATABASE_URL" --no-owner --no-privileges -f r2mcp-$(date +%Y-%m-%d).sql
+```
+
+### Restore drill
+
+Do this once now, not during an incident:
+
+1. `npm run db:export -- --out=drill.jsonl`
+2. Point `R2MCP_DATABASE_URL` at a scratch database (e.g. the docker-compose Postgres) and run `npm run setup`
+3. `npm run db:import -- drill.jsonl` — expect `errors: []` and inserted counts matching the export header
+4. Spot-check: `recall` a memory you know, verify an edge survived
+
+### Suggested cadence
+
+- **Daily** `db:export` via cron/launchd to a dated file (they're small — a few MB even with embeddings)
+- **Before any prod mutation** (migrations, scope re-stamps, bulk cleanups): take a fresh export first
+- Keep at least a week of dailies; prune older ones
+
 ## Memory Tiers
 
 | Tier | What goes here | Auto-archived after |
