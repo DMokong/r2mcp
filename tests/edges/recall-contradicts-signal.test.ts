@@ -38,8 +38,8 @@ describe('recall() signals[] — contradicts (AC7)', () => {
     expect(sig!.confidence).toBeLessThanOrEqual(1);
 
     // Existing fields unchanged
-    expect(response.query).toBe('library X HTTP');
-    expect(typeof response.total_results).toBe('number');
+    expect(response).not.toHaveProperty('query'); // claw-ohhj.3: echo dropped
+    expect(typeof response.results.length).toBe('number');
     expect(['semantic', 'fulltext_only']).toContain(response.search_mode);
   });
 });

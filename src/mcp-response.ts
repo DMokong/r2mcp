@@ -9,7 +9,9 @@ import { withBreadcrumbs, type ToolName, type BreadcrumbContext } from './breadc
 export function asMcpResponse<T extends object>(toolName: ToolName, result: T, args: unknown) {
   const ctx = { tool: toolName, response: result as never, args } as BreadcrumbContext;
   const wrapped = withBreadcrumbs(result, ctx);
+  // Compact serialization (claw-ohhj.3): agents pay for every response token
+  // in every session; pretty-print indentation was ~30% of the payload.
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(wrapped, null, 2) }],
+    content: [{ type: 'text' as const, text: JSON.stringify(wrapped) }],
   };
 }

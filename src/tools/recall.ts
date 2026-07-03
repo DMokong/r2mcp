@@ -46,7 +46,12 @@ export interface EntityLink {
   confidence: number;
 }
 
-export interface RecallResult {
+/**
+ * Pre-compaction result shape used internally: dual timestamps, full-precision
+ * score, always-present persons. The wire shape is RecallResult — see
+ * compactResult (claw-ohhj.3).
+ */
+export interface FullRecallResult {
   id: string;
   tier: string;
   content: string;
@@ -63,15 +68,54 @@ export interface RecallResult {
   entity_links?: EntityLink[];
 }
 
-export interface RecallResponse {
+/**
+ * Wire shape (claw-ohhj.3 compaction): score rounded to 3 decimals, one
+ * timestamp (`updated` — equals creation time when the memory was never
+ * updated), empty persons elided.
+ */
+export interface RecallResult {
+  id: string;
+  tier: string;
+  content: string;
+  metadata: {
+    type: string;
+    topics: string[];
+    persons?: string[];
+    updated: string;
+  };
+  score: number;
+  match_type: MatchType;
+  /** SPEC-046: present only when recall() is called with an `entity` filter. */
+  entity_links?: EntityLink[];
+}
+
+/** Pre-compaction response assembled by runRecall; compactResponse trims it. */
+export interface FullRecallResponse {
   results: RecallResult[];
   query: string;
-  total_results: number;
   search_mode: SearchMode;
   tiers_searched: string[];
   tokens_used?: number;
   early_stopped?: boolean;
-  /** Always present in v1.1+; optional for backward-compat with pre-edges client types. */
+  signals?: RecallSignal[];
+  entity_resolved?: boolean;
+  entity_id?: string;
+  warnings?: string[];
+}
+
+/**
+ * Wire shape (claw-ohhj.3 compaction): no `query` echo, no `total_results`
+ * (derivable from results.length), `early_stopped` only when true, `signals`
+ * only when non-empty.
+ */
+export interface RecallResponse {
+  results: RecallResult[];
+  search_mode: SearchMode;
+  tiers_searched: string[];
+  tokens_used?: number;
+  /** Present only when true. */
+  early_stopped?: boolean;
+  /** SPEC-043 signals; present only when non-empty (claw-ohhj.3 elision). */
   signals?: RecallSignal[];
   /** SPEC-046: present only when recall() is called with an `entity` filter. */
   entity_resolved?: boolean;
@@ -79,6 +123,29 @@ export interface RecallResponse {
   entity_id?: string;
   /** Present only when the search ran degraded, e.g. embeddings unavailable (claw-8cjf.2). */
   warnings?: string[];
+}
+
+/** claw-ohhj.3: full-precision internal result → compact wire result. */
+export function compactResult(r: FullRecallResult): RecallResult {
+  const { created: _created, persons, ...metaRest } = r.metadata;
+  return {
+    ...r,
+    score: Math.round(r.score * 1000) / 1000,
+    metadata: {
+      ...metaRest,
+      ...(persons && persons.length > 0 ? { persons } : {}),
+    },
+  };
+}
+
+/** claw-ohhj.3: full response → compact wire response. */
+export function compactResponse(full: FullRecallResponse): RecallResponse {
+  const { query: _query, early_stopped, signals, ...rest } = full;
+  return {
+    ...rest,
+    ...(early_stopped ? { early_stopped: true } : {}),
+    ...(signals && signals.length > 0 ? { signals } : {}),
+  };
 }
 
 export interface RecallInput {
@@ -105,7 +172,7 @@ export interface RecallInput {
 }
 
 // Internal type with pre-tier-weight score and raw embedding for MMR computation
-interface InternalResult extends RecallResult {
+interface InternalResult extends FullRecallResult {
   rawScore: number;
   rawEmbedding?: number[];
 }
@@ -157,7 +224,7 @@ function docSimilarity(a: InternalResult, b: InternalResult): number {
   return jaccardSimilarity(a.content, b.content);
 }
 
-function stripInternal(r: InternalResult): RecallResult {
+function stripInternal(r: InternalResult): FullRecallResult {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { rawScore, rawEmbedding, ...rest } = r;
   return rest;
@@ -482,8 +549,6 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
     if (!resolvedEntity) {
       return {
         results: [],
-        query: query ?? '',
-        total_results: 0,
         search_mode: 'semantic',
         tiers_searched: [],
         entity_resolved: false,
@@ -595,18 +660,18 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
   // SPEC-046: when the entity filter is active, attach per-memory entity_links
   // (the FULL link set for each memory, not just the filter entity — callers
   // can see the wider entity graph for these results) and set top-level
-  // entity_resolved + entity_id. When the filter is OFF, response shape must
-  // be byte-identical to SPEC-037 — no new keys, not even undefined ones.
-  const strippedResults = finalResults.map(stripInternal);
+  // entity_resolved + entity_id. When the filter is OFF, no entity keys appear
+  // — not even undefined ones. Results and response then pass through the
+  // claw-ohhj.3 compaction (rounded scores, single timestamp, no query echo).
+  const stripped = finalResults.map(stripInternal);
   if (entityFilterActive && resolvedEntity) {
     const linkMap = await getEntityLinksForMemories(pool, ids);
-    for (const r of strippedResults) {
+    for (const r of stripped) {
       r.entity_links = linkMap.get(r.id) ?? [];
     }
-    return {
-      results: strippedResults,
+    return compactResponse({
+      results: stripped.map(compactResult),
       query,
-      total_results: finalResults.length,
       search_mode: searchMode,
       tiers_searched: tiersSearched,
       tokens_used: tokensUsed,
@@ -615,18 +680,17 @@ export async function recall(input: RecallInput): Promise<RecallResponse> {
       entity_resolved: true,
       entity_id: resolvedEntity.id,
       ...(degradedWarning ? { warnings: [degradedWarning] } : {}),
-    };
+    });
   }
 
-  return {
-    results: strippedResults,
+  return compactResponse({
+    results: stripped.map(compactResult),
     query,
-    total_results: finalResults.length,
     search_mode: searchMode,
     tiers_searched: tiersSearched,
     tokens_used: tokensUsed,
     early_stopped: earlyStopped,
     signals,
     ...(degradedWarning ? { warnings: [degradedWarning] } : {}),
-  };
+  });
 }

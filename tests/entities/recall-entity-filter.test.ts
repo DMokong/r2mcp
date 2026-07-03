@@ -77,7 +77,7 @@ describe('SPEC-046 recall(entity) — Task 10', () => {
     expect(res.entity_resolved).toBe(false);
     expect(res.entity_id).toBeUndefined();
     expect(res.results).toEqual([]);
-    expect(res.total_results).toBe(0);
+    expect(res.results.length).toBe(0);
   });
 
   it('AC3b: entity with zero linked memories returns empty with entity_resolved=true', async () => {
@@ -88,7 +88,7 @@ describe('SPEC-046 recall(entity) — Task 10', () => {
     const res = await recall({ query: '', entity: 'EmptyProject' });
     expect(res.entity_resolved).toBe(true);
     expect(res.entity_id).toBe(empty.id);
-    expect(res.total_results).toBe(0);
+    expect(res.results.length).toBe(0);
   });
 
   it('AC3: entity-only recall works without query (no query field at all)', async () => {
@@ -99,7 +99,7 @@ describe('SPEC-046 recall(entity) — Task 10', () => {
     expect(res.entity_resolved).toBe(true);
     expect(res.entity_id).toBe(specId);
     expect(res.results.map((r) => r.id).sort()).toEqual([ids[0], ids[2]].sort());
-    expect(res.query).toBe('');
+    expect(res).not.toHaveProperty('query'); // claw-ohhj.3: echo dropped
   });
 
   it('AC3: entity filter composes with a fulltext query — intersection narrows pool, then ranking applies', async () => {
@@ -143,7 +143,7 @@ describe('SPEC-046 recall(entity) — Task 10', () => {
     expect(resultIds).toContain(m1);
     expect(resultIds).toContain(m2);
     expect(resultIds).not.toContain(m3);
-    expect(res.total_results).toBe(2);
+    expect(res.results.length).toBe(2);
 
     // entity_links surface still attached to every result.
     for (const r of res.results) {
