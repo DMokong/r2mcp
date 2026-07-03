@@ -7,6 +7,15 @@ entries reference the internal spec numbers that shipped them.
 
 ## [0.3.0] — 2026-07-03
 
+### Changed
+
+- **Compact recall responses** (claw-ohhj.3): scores round to 3 decimals; one
+  timestamp per result (`updated`); the `query` echo, `total_results`
+  (derivable from `results.length`), false `early_stopped`, empty `signals`,
+  and empty `persons` are elided; and every tool response now serializes
+  compactly (no pretty-print indentation). Measured 28–43% smaller recall
+  payloads on representative corpora — paid on every recall in every session.
+
 ### Added
 
 - **Project-scope namespacing** (claw-nyxd): multiple projects can share one

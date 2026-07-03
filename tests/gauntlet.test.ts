@@ -952,7 +952,7 @@ describe('Memory System Gauntlet', () => {
       for (const r of v2Results) {
         expect(r.tiers_searched).toBeDefined();
         expect(r.tokens_used).toBeDefined();
-        expect(r.early_stopped).toBeDefined();
+        expect(r.early_stopped === undefined || r.early_stopped === true).toBe(true); // claw-ohhj.3: absent unless true
       }
     });
   });

@@ -10,20 +10,18 @@ afterAll(async () => { await teardownEdgesTestDb(); });
 beforeEach(async () => { await resetEdgesTestDb(pool); });
 
 describe('recall() backward compatibility (AC9)', () => {
-  it('no-edges run: signals is empty array, all pre-existing fields unchanged', async () => {
+  it('no-edges run: signals elided when empty, wire fields present (claw-ohhj.3 shape)', async () => {
     for (let i = 0; i < 5; i++) {
       await insertTestMemory(pool, `test memory ${i}`, 'context', ['test']);
     }
 
     const response = await recall({ query: 'test', top_k: 5 });
 
-    // signals[] is present but empty when no edges exist
-    expect(Array.isArray(response.signals)).toBe(true);
-    expect(response.signals!.length).toBe(0);
+    // claw-ohhj.3: empty signals are elided from the wire shape
+    expect(response).not.toHaveProperty('signals');
 
-    // Pre-existing fields all present with correct types
-    expect(typeof response.query).toBe('string');
-    expect(typeof response.total_results).toBe('number');
+    // Wire fields present with correct types (query echo + total_results
+    // removed by claw-ohhj.3 — results.length carries the count)
     expect(['semantic', 'fulltext_only']).toContain(response.search_mode);
     expect(Array.isArray(response.tiers_searched)).toBe(true);
     expect(typeof response.tokens_used === 'number' || response.tokens_used === undefined).toBe(true);
@@ -45,7 +43,7 @@ describe('recall() backward compatibility (AC9)', () => {
     // Snapshot of expected key set on the response. Additive-only fields:
     // signals (SPEC-043), warnings (claw-8cjf.2 — present when embeddings degrade).
     const expectedKeys = new Set([
-      'results', 'query', 'total_results', 'search_mode',
+      'results', 'search_mode',
       'tiers_searched', 'tokens_used', 'early_stopped', 'signals', 'warnings',
     ]);
     for (const k of Object.keys(response)) {

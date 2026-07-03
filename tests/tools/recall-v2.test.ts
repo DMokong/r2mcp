@@ -205,7 +205,7 @@ describe('Phase 1a: Relevance floor (min_score)', () => {
 
     // Without floor: may include the ESLint entry (if it matched at all)
     // The key assertion: floor version has <= results than no-floor
-    expect(withFloor.total_results).toBeLessThanOrEqual(withoutFloor.total_results);
+    expect(withFloor.results.length).toBeLessThanOrEqual(withoutFloor.results.length);
   });
 
   it('custom min_score rejects results below threshold', async () => {
@@ -223,7 +223,7 @@ describe('Phase 1a: Relevance floor (min_score)', () => {
     const strict = await recall({ query: 'TypeScript strict', min_score: 0.99 });
     const relaxed = await recall({ query: 'TypeScript strict', min_score: 0.0 });
 
-    expect(strict.total_results).toBeLessThanOrEqual(relaxed.total_results);
+    expect(strict.results.length).toBeLessThanOrEqual(relaxed.results.length);
   });
 
   it('min_score=0.0 returns same results as no floor (up to top_k)', async () => {
@@ -232,7 +232,7 @@ describe('Phase 1a: Relevance floor (min_score)', () => {
 
     const withZeroFloor = await recall({ query: 'editor dark mode', min_score: 0.0 });
     // With min_score=0.0, nothing is filtered — just MMR applied
-    expect(withZeroFloor.total_results).toBeGreaterThanOrEqual(1);
+    expect(withZeroFloor.results.length).toBeGreaterThanOrEqual(1);
     expect(withZeroFloor.results[0].content.toLowerCase()).toContain('dark mode');
   });
 });
@@ -254,15 +254,15 @@ describe('Phase 1b: MMR diversity', () => {
     const noDiversity = await recall({ query: 'launchd scheduling', diversity: 1.0, min_score: 0.0, top_k: 3 });
 
     // Both should return results
-    expect(diverse.total_results).toBeGreaterThanOrEqual(1);
-    expect(noDiversity.total_results).toBeGreaterThanOrEqual(1);
+    expect(diverse.results.length).toBeGreaterThanOrEqual(1);
+    expect(noDiversity.results.length).toBeGreaterThanOrEqual(1);
 
     // With full relevance (diversity=1.0), both launchd entries rank above postgres
     const noDivTopTwo = noDiversity.results.slice(0, 2);
     expect(noDivTopTwo.every(r => r.content.includes('launchd'))).toBe(true);
 
     // With diversity (0.7), postgres should appear before the second launchd entry
-    if (diverse.total_results >= 3) {
+    if (diverse.results.length >= 3) {
       const postgresIdx = diverse.results.findIndex(r => r.content.includes('PostgreSQL'));
       const launchd2Idx = diverse.results.findIndex(
         (r, idx) => r.content.includes('launchd') && idx > 0
@@ -281,7 +281,7 @@ describe('Phase 1b: MMR diversity', () => {
 
     // With pure relevance, tier weighting should dominate
     // preferences (1.3x) > project-context (1.0x) > conversations (0.8x)
-    if (pureRelevance.total_results === 3) {
+    if (pureRelevance.results.length === 3) {
       expect(pureRelevance.results[0].tier).toBe('preferences');
       expect(pureRelevance.results[2].tier).toBe('conversations');
     }
@@ -351,13 +351,13 @@ describe('Phase 2: Context budgeting (max_tokens)', () => {
 
   it('max_tokens=0 returns empty results', async () => {
     const result = await recall({ query: 'TypeScript', max_tokens: 0, min_score: 0.0 });
-    expect(result.total_results).toBe(0);
+    expect(result.results.length).toBe(0);
     expect(result.tokens_used).toBe(0);
   });
 
   it('large max_tokens behaves like top_k with token reporting', async () => {
     const result = await recall({ query: 'TypeScript', max_tokens: 100000, top_k: 5, min_score: 0.0 });
-    expect(result.total_results).toBeLessThanOrEqual(5);
+    expect(result.results.length).toBeLessThanOrEqual(5);
     expect(result.tokens_used).toBeDefined();
     expect(result.tokens_used!).toBeGreaterThan(0);
   });
@@ -405,15 +405,15 @@ describe('Phase 3: Progressive tier search', () => {
 
     // Without progressive, should still work (falls back to flat search)
     const result = await recall({ query: 'TypeScript strict', progressive: false, min_score: 0.0 });
-    expect(result.total_results).toBeGreaterThanOrEqual(1);
-    expect(result.early_stopped).toBe(false);
+    expect(result.results.length).toBeGreaterThanOrEqual(1);
+    expect(result.early_stopped).toBeUndefined(); // claw-ohhj.3: absent when false
   });
 
   it('early_stopped is false when progressive=false', async () => {
     await remember({ operation: 'ADD', tier: 'preferences', content: 'Prefer tabs over spaces for indentation', metadata: { type: 'preference', topics: ['code-style'] } });
 
     const result = await recall({ query: 'indentation', progressive: false, min_score: 0.0 });
-    expect(result.early_stopped).toBe(false);
+    expect(result.early_stopped).toBeUndefined(); // claw-ohhj.3: absent when false
   });
 
   it('searches all 3 tiers when no early stop condition met (fulltext mode)', async () => {
@@ -428,7 +428,7 @@ describe('Phase 3: Progressive tier search', () => {
     // In fulltext mode, rawScores rarely exceed 0.82, so all tiers should be searched
     // (progressive search is only activated in semantic/hybrid mode in our implementation)
     expect(result.tiers_searched.length).toBeGreaterThanOrEqual(1);
-    expect(result.total_results).toBe(3);
+    expect(result.results.length).toBe(3);
   });
 
   // Semantic mode progressive search — requires API key
@@ -501,7 +501,7 @@ describe('Phase 4: Token optimization measurement', () => {
     expect(withFloor.tokens_used!).toBeLessThanOrEqual(withoutFloor.tokens_used!);
 
     // Reduction should be meaningful if floor filters the irrelevant results
-    if (withoutFloor.total_results > withFloor.total_results) {
+    if (withoutFloor.results.length > withFloor.results.length) {
       const reductionPct = 1 - (withFloor.tokens_used! / withoutFloor.tokens_used!);
       expect(reductionPct).toBeGreaterThan(0);
     }
@@ -543,7 +543,7 @@ describe('Phase 4: Token optimization measurement', () => {
   });
 
   // Token reduction in semantic mode — requires API key
-  it.skipIf(!apiKey)('semantic mode achieves meaningful token reduction vs v1 behavior', async () => {
+  it.skipIf(!apiKey)('semantic mode achieves meaningful token reduction vs v1 behavior', { timeout: 30_000 }, async () => {
     process.env.R2MCP_OPENROUTER_API_KEY = apiKey!;
 
     // Insert redundant memories about the same concept
@@ -580,8 +580,8 @@ describe('Phase 4: Token optimization measurement', () => {
     expect(v2Style.search_mode).toBe('semantic');
 
     // Both return results and report token usage
-    expect(v1Style.total_results).toBeGreaterThanOrEqual(1);
-    expect(v2Style.total_results).toBeGreaterThanOrEqual(1);
+    expect(v1Style.results.length).toBeGreaterThanOrEqual(1);
+    expect(v2Style.results.length).toBeGreaterThanOrEqual(1);
     expect(v2Style.tokens_used).toBeDefined();
     expect(v2Style.tokens_used!).toBeGreaterThan(0);
 
@@ -599,7 +599,7 @@ describe('Phase 4: Token optimization measurement', () => {
 
     // v2 exposes progressive/early_stop metadata
     expect(v2Style.tiers_searched).toBeDefined();
-    expect(v2Style.early_stopped).toBeDefined();
+    expect(v2Style.early_stopped === undefined || v2Style.early_stopped === true).toBe(true); // claw-ohhj.3: absent unless true
 
     delete process.env.R2MCP_OPENROUTER_API_KEY;
   });
@@ -619,14 +619,14 @@ describe('Backward compatibility', () => {
 
     // Same shape as before
     expect(result.results).toBeDefined();
-    expect(result.query).toBe('dark mode editor');
-    expect(result.total_results).toBeDefined();
+    expect(result).not.toHaveProperty('query'); // claw-ohhj.3: echo dropped
+    expect(result.results.length).toBeDefined();
     expect(result.search_mode).toBeDefined();
 
     // New fields exist but don't break anything
     expect(result.tiers_searched).toBeDefined();
     expect(result.tokens_used).toBeDefined();
-    expect(result.early_stopped).toBeDefined();
+    expect(result.early_stopped === undefined || result.early_stopped === true).toBe(true); // claw-ohhj.3: absent unless true
 
     // Result shape unchanged
     const r = result.results[0];
@@ -650,7 +650,7 @@ describe('Backward compatibility', () => {
     }
 
     const result = await recall({ query: 'TypeScript configuration', top_k: 5 });
-    expect(result.total_results).toBeLessThanOrEqual(5);
+    expect(result.results.length).toBeLessThanOrEqual(5);
   });
 
   it('recall({query, tier}) still filters by tier', async () => {

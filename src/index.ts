@@ -186,7 +186,7 @@ server.tool(
           all_scopes: args.all_scopes,
           scope: args.scope,
         });
-        span.setAttribute('result_count', r.total_results ?? 0);
+        span.setAttribute('result_count', r.results.length);
         span.setAttribute('search_mode', r.search_mode ?? 'unknown');
         span.setAttribute('early_stopped', r.early_stopped ?? false);
         span.setAttribute('tiers_searched', (r.tiers_searched ?? []).join(','));

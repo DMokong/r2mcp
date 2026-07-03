@@ -36,8 +36,8 @@ describe('recall() tool', () => {
       const response = await recall({ query: 'dark mode editor' });
 
       expect(response.search_mode).toBe('fulltext_only');
-      expect(response.total_results).toBeGreaterThanOrEqual(1);
-      expect(response.query).toBe('dark mode editor');
+      expect(response.results.length).toBeGreaterThanOrEqual(1);
+      expect(response).not.toHaveProperty('query'); // claw-ohhj.3: echo dropped
 
       // Should find the dark mode memory
       const match = response.results.find(r => r.content.includes('dark mode'));
@@ -76,7 +76,7 @@ describe('recall() tool', () => {
 
       const response = await recall({ query: 'TypeScript configuration memory server' });
 
-      expect(response.total_results).toBe(2);
+      expect(response.results.length).toBe(2);
 
       // Preferences (1.3x) should rank above conversations (0.8x)
       // given similar fulltext relevance
@@ -126,7 +126,7 @@ describe('recall() tool', () => {
       });
 
       // Should only return project-context tier
-      expect(response.total_results).toBe(1);
+      expect(response.results.length).toBe(1);
       expect(response.results[0].tier).toBe('project-context');
       expect(response.results[0].content).toContain('pgvector');
     } finally {
@@ -165,7 +165,7 @@ describe('recall() tool', () => {
       });
 
       const response = await recall({ query: 'indentation' });
-      expect(response.total_results).toBe(1);
+      expect(response.results.length).toBe(1);
       expect(response.results[0].content).toContain('tabs');
     } finally {
       if (savedKey !== undefined) {

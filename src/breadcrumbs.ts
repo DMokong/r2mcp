@@ -80,11 +80,9 @@ export interface RecallSignal {
 
 export interface RecallResponse {
   results: RecallResultItem[];
-  total_results: number;
   search_mode: string;
   tiers_searched: string[];
-  query: string;
-  /** Top-level signals array per SPEC-044 recall response shape. */
+  /** Top-level signals array per SPEC-044; elided when empty (claw-ohhj.3). */
   signals?: RecallSignal[];
 }
 

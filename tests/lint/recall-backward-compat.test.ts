@@ -17,31 +17,34 @@ import type {
   RecallResult,
 } from '../../src/tools/recall.js';
 
-describe('recall() response shape pin (C.AC7)', () => {
+describe('recall() response shape pin (C.AC7, claw-ohhj.3 compact wire shape)', () => {
   it('top-level RecallResponse keys match the documented contract', () => {
     // Minimal valid shape, by type. If any required field is missing or any
     // unexpected field becomes required, TypeScript will flag this literal.
+    // claw-ohhj.3: `query` echo and `total_results` are gone from the wire
+    // shape; `early_stopped` appears only when true; `signals` only when
+    // non-empty.
     const response: RecallResponse = {
       results: [],
-      query: 'q',
-      total_results: 0,
       search_mode: 'semantic',
       tiers_searched: [],
     };
-    // Top-level keys: 'results' | 'query' | 'total_results' | 'search_mode'
-    // | 'tiers_searched' | 'tokens_used'? | 'early_stopped'? | 'signals'?
-    const documentedRequired = ['results', 'query', 'total_results', 'search_mode', 'tiers_searched'];
+    const documentedRequired = ['results', 'search_mode', 'tiers_searched'];
     for (const k of documentedRequired) {
       expect(response).toHaveProperty(k);
     }
+    expect(response).not.toHaveProperty('query');
+    expect(response).not.toHaveProperty('total_results');
   });
 
   it('per-result RecallResult fields match the documented contract', () => {
+    // claw-ohhj.3: single `updated` timestamp; `persons` optional (elided
+    // when empty); score arrives rounded to 3 decimals.
     const result: RecallResult = {
       id: 'm1',
       tier: 'preferences',
       content: 'c',
-      metadata: { type: 't', topics: [], persons: [], created: '2026-05-01', updated: '2026-05-01' },
+      metadata: { type: 't', topics: [], updated: '2026-05-01' },
       score: 1.0,
       match_type: 'hybrid',
     };
@@ -52,18 +55,15 @@ describe('recall() response shape pin (C.AC7)', () => {
     // metadata sub-shape preserved from prior spec
     expect(result.metadata).toHaveProperty('type');
     expect(result.metadata).toHaveProperty('topics');
+    expect(result.metadata).not.toHaveProperty('created');
   });
 
-  it('signals[] field still present from SPEC-043 (not removed by SPEC-044)', () => {
-    // signals[] is optional in the type but should be defined whenever the
-    // recall path produces results — the SPEC-043 contract.
+  it('signals[] survives from SPEC-043 when edges exist (elided only when empty)', () => {
     const response: RecallResponse = {
       results: [],
-      query: 'q',
-      total_results: 0,
       search_mode: 'semantic',
       tiers_searched: [],
-      signals: [],
+      signals: [{ kind: 'contradicts', from_id: 'a', to_id: 'b' }],
     };
     expect(Array.isArray(response.signals)).toBe(true);
   });
