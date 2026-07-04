@@ -3,11 +3,18 @@ type: Module
 title: src/providers/claude-code.ts
 description: Skeleton concept for src/providers/claude-code.ts (extracted; 10 symbols).
 resource: src/providers/claude-code.ts
+tags:
+  - src
+  - module
+  - class
+  - function
+  - interface
+  - method
 enrichment: none
 from: []
 explains: []
 stale: false
-graph_hash: 77d367245d49ace6ef0672a008ab019becccb6dbdf36b1e5dba5e4679096f6d2
+graph_hash: 54570211ff06c2bd59dd0a2dac52f1722134ad26c899e0f940f3d2a9c0d8f342
 ---
 
 # Structure
@@ -42,4 +49,4 @@ graph_hash: 77d367245d49ace6ef0672a008ab019becccb6dbdf36b1e5dba5e4679096f6d2
 - `runClaude` → `wrapSpawnError` (same file)
 
 ## Called by
-- `selectProvider` in [src/providers/index.ts](/src/providers/index.md)
+- `selectProvider` in [src/providers/index.ts](/src/providers/index.ts.md)

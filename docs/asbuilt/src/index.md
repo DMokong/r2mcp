@@ -5,7 +5,7 @@
 * [src/env.ts](env.md) - Skeleton concept for src/env.ts (extracted; 2 symbols).
 * [src/fingerprint.ts](fingerprint.md) - Skeleton concept for src/fingerprint.ts (extracted; 2 symbols).
 * [src/graph-rebuild.ts](graph-rebuild.md) - Skeleton concept for src/graph-rebuild.ts (extracted; 1 symbols).
-* [src/index.ts](index.md) - Skeleton concept for src/index.ts (extracted; 3 symbols).
+* [src/index.ts](index.ts.md) - Skeleton concept for src/index.ts (extracted; 3 symbols).
 * [src/mcp-response.ts](mcp-response.md) - Skeleton concept for src/mcp-response.ts (extracted; 1 symbols).
 * [src/migrations.ts](migrations.md) - Skeleton concept for src/migrations.ts (extracted; 7 symbols).
 * [src/telemetry.ts](telemetry.md) - Skeleton concept for src/telemetry.ts (extracted; 3 symbols).
