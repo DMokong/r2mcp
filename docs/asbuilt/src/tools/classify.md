@@ -9,12 +9,20 @@ tags:
   - const
   - function
   - interface
-enrichment: none
-from: []
-explains: []
+enrichment: accuracy-audited
+from:
+  - BACKFILL-r2mcp-03
+explains:
+  - src/tools/classify.ts#ClassifySummary
+  - src/tools/classify.ts#ClassifyToolInput
+  - src/tools/classify.ts#buildArgs
+  - src/tools/classify.ts#classify
+  - src/tools/classify.ts#parseSummary
+  - src/tools/classify.ts#runSubprocess
+  - src/tools/classify.ts#settle
 stale: false
 stale_reason: ""
-graph_hash: f3062700a89bb65b1df9622f69f7f24581224e0a7462079dc9cdb4a2395643c0
+graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 ---
 
 # Structure
@@ -43,3 +51,12 @@ graph_hash: f3062700a89bb65b1df9622f69f7f24581224e0a7462079dc9cdb4a2395643c0
 - `classify` → [resolveCliCommand](/src/tools/spawn-cli.md)
 - `classify` → `runSubprocess` (same file)
 - `runSubprocess` → `settle` (same file)
+
+# Explanation
+classify() is the MCP-facing entry point for SPEC-043's two-stage (Haiku filter, then Opus classify) edge-classification pipeline, which links related memories with typed edges (contradicts, supersedes, elaborates, etc.). It is a thin subprocess wrapper by design, not by accident: SPEC-044 forbids the long-running MCP server process from making LLM calls itself, so classify() only marshals arguments, manages subprocess lifecycle, and parses the result — the real classification work (and the provider credentials/config it needs) lives entirely in the standalone `classify-edges` CLI driver.
+
+# Decisions
+- (BACKFILL-r2mcp-03) resolveCliCommand (spawn-cli.ts) is the single place that knows dev-vs-prod invocation (tsx+.ts vs node+dist/.js); classify.ts itself never branches on environment. The default 30-minute subprocess timeout exists because a full, cost-capped classify run walks every candidate pair through two LLM stages and can legitimately take a while; it's injectable via `deps.runTimeoutMs` specifically so tests don't have to wait out a real timeout. The `settle()` once-only guard exists because the timer's SIGKILL path and the child's own `exit` event can both fire in close succession once a process is killed — without the guard, a timeout rejection could be silently overwritten by a late exit-resolve (or vice versa). This exact pattern (settle guard + brace-matching JSON parser) is copy-pasted near-verbatim into extract-entities.ts, and the parse strategy is shared conceptually with compile.ts too — the in-file comments cross-reference each other, so a change to the subprocess's terminal-JSON convention (walking backward from the last `}` with string-aware brace matching, because the CLI may print progress output that is itself JSON-shaped before the real summary) should be propagated to all three files, not just one.
+
+# Citations
+[1] BACKFILL-r2mcp-03 evidence: /Users/dustincheng/projects/claudeclaw/docs/specs/asbuilt-living-kb/evidence/backfill03-evidence.yml

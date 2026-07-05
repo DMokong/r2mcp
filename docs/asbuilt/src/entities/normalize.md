@@ -7,12 +7,14 @@ tags:
   - src
   - module
   - function
-enrichment: none
-from: []
-explains: []
+enrichment: accuracy-audited
+from:
+  - BACKFILL-r2mcp-07
+explains:
+  - src/entities/normalize.ts#normalizeEntityName
 stale: false
 stale_reason: ""
-graph_hash: f3062700a89bb65b1df9622f69f7f24581224e0a7462079dc9cdb4a2395643c0
+graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 ---
 
 # Structure
@@ -30,3 +32,12 @@ graph_hash: f3062700a89bb65b1df9622f69f7f24581224e0a7462079dc9cdb4a2395643c0
 - `mergeAliases` in [src/entities/db.ts](/src/entities/db.md)
 - `upsertEntity` in [src/entities/db.ts](/src/entities/db.md)
 - `runExtractor` in [src/entities/extractor.ts](/src/entities/extractor.md)
+
+# Explanation
+normalizeEntityName is the single canonicalization function that everything in the entity system's identity model depends on: two names are 'the same entity' if and only if this function maps them to the same string. It exists as its own one-function file specifically so it can be imported without pulling in any DB or LLM dependencies — both db.ts (for persisted normalized_name/alias comparisons) and extractor.ts (for in-memory LLM-match resolution) need the exact same logic and must never drift apart.
+
+# Decisions
+- (BACKFILL-r2mcp-07) NFKC (compatibility decomposition + canonical composition) was chosen over the more common NFC specifically because compatibility normalization also collapses visually/semantically equivalent but code-point-different characters (e.g. full-width Latin letters, certain ligatures) that plain NFC would leave distinct — relevant because entity names in this system originate from free-form LLM output and user input, not a constrained input widget, so unusual Unicode variants are a realistic occurrence. The biggest gotcha for a future maintainer: normalized_name is PERSISTED as a column (see db.ts upsertEntity), not recomputed at query time from canonical_name — so if this function's logic ever changes (e.g. the whitespace-collapse regex, or swapping NFKC for something else), every existing row's stored normalized_name becomes stale relative to freshly-normalized input, and previously-matching aliases/names will silently stop resolving to the same entity until a backfill migration recomputes normalized_name for all existing rows — there is no such migration path today. The `/\s+/g` collapse step is necessary in addition to NFKC because Unicode normalization does not touch whitespace variety (tabs vs. multiple spaces vs. newlines) — without it, two names differing only in whitespace run-length would normalize to different strings and be treated as different entities.
+
+# Citations
+[1] BACKFILL-r2mcp-07 evidence: /Users/dustincheng/projects/claudeclaw/docs/specs/asbuilt-living-kb/evidence/backfill07-evidence.yml

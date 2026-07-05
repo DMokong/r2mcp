@@ -18,7 +18,7 @@ explains:
   - src/tools/remember.ts#remember
 stale: false
 stale_reason: ""
-graph_hash: f3062700a89bb65b1df9622f69f7f24581224e0a7462079dc9cdb4a2395643c0
+graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 ---
 
 # Structure
