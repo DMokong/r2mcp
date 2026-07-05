@@ -4,7 +4,7 @@
     "name": "web-tree-sitter",
     "version": "0.24.5"
   },
-  "target_commit": "f0f7e73ed53992e8c50a8a7ed32a074b4708092a",
+  "target_commit": "c17102fec7a07f6e2848b70dc1f4e1c39ad99569",
   "symbols": [
     {
       "id": "src/backup/exporter.ts#ExportHeader",

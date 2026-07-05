@@ -10,9 +10,17 @@ tags:
   - function
   - interface
   - method
-enrichment: none
-from: []
-explains: []
+enrichment: accuracy-audited
+from:
+  - BACKFILL-r2mcp-02
+explains:
+  - src/edges/state.ts#RunSummaryWriter
+  - src/edges/state.ts#RunSummaryWriter.write
+  - src/edges/state.ts#StateStore
+  - src/edges/state.ts#StateStore.append
+  - src/edges/state.ts#StateStore.markActiveRun
+  - src/edges/state.ts#StateStore.terminalPairs
+  - src/edges/state.ts#pairHash
 stale: false
 stale_reason: ""
 graph_hash: f3062700a89bb65b1df9622f69f7f24581224e0a7462079dc9cdb4a2395643c0
@@ -57,3 +65,12 @@ graph_hash: f3062700a89bb65b1df9622f69f7f24581224e0a7462079dc9cdb4a2395643c0
 - `runClassifier` in [src/edges/classifier.ts](/src/edges/classifier.md)
 - `runClassifier` in [src/edges/classifier.ts](/src/edges/classifier.md)
 - `runClassifier` in [src/edges/classifier.ts](/src/edges/classifier.md)
+
+# Explanation
+state.ts is the crash-resumability backbone for the two-stage (cheap Haiku screen, then expensive Opus classify) edge-classification pipeline. Classification runs can be long, cost real money per LLM call, and get killed mid-run (Ctrl-C, OOM, hitting the cost cap); state.ts's job is ensuring a `resume_run_id` re-invocation picks up exactly where the prior run stopped without re-spending on pairs already resolved.
+
+# Decisions
+- (BACKFILL-r2mcp-02) `pairHash()` sorts the two input ids before hashing specifically so pair (A, B) and (B, A) hash identically — candidate pairs are inherently unordered, so without the sort, a resume could fail to recognize a pair it already finished if a later candidate-pairs generation pass produced it in the opposite order. The append-only JSONL design (one line per stage transition, never rewritten in place) is chosen for hard-kill safety: a process that dies mid-write can only corrupt the LAST line, never an earlier one, and `terminalPairs()` already handles a truncated final line explicitly — an in-place-update design would have needed careful fsync/rename-based atomic writes to get the same guarantee. `TERMINAL_STAGES` deliberately excludes `'haiku_pass'` — a pair that merely passed the cheap Haiku screen still needs the expensive Opus step, so only stages meaning "nothing more will happen to this pair" (`opus_complete`, `haiku_skip`, `cap_reached`, `rejection_skip`) stop it from being re-attempted on resume. `RunSummaryWriter` is a separate class from `StateStore` even though both persist run data, because they serve different readers at different times: `StateStore`'s JSONL is written incrementally DURING the run and is read back only by the SAME pipeline for resume; `RunSummaryWriter` writes one JSON file ONCE, at the end, for humans/dashboards/other tool responses (e.g. surfaced by the `classify` MCP tool) — conflating the two into one file would force resume-parsing logic to also understand a completed-summary shape.
+
+# Citations
+[1] BACKFILL-r2mcp-02 evidence: /Users/dustincheng/projects/claudeclaw/docs/specs/asbuilt-living-kb/evidence/backfill02-evidence.yml
