@@ -25,7 +25,7 @@ explains:
   - src/entities/state.ts#EntityStateInit
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -52,13 +52,6 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 - `EntityState.constructor` → `EntityState.loadTerminalSet` (same file)
 - `EntityState.recordParseFailed` → `EntityState.appendRecord` (same file)
 - `EntityState.recordTerminal` → `EntityState.appendRecord` (same file)
-
-## Called by
-- `finalize` in [src/entities/extractor.ts](/src/entities/extractor.md)
-- `finalize` in [src/entities/extractor.ts](/src/entities/extractor.md)
-- `runExtractor` in [src/entities/extractor.ts](/src/entities/extractor.md)
-- `runExtractor` in [src/entities/extractor.ts](/src/entities/extractor.md)
-- `runExtractor` in [src/entities/extractor.ts](/src/entities/extractor.md)
 
 # Explanation
 EntityState is the crash-resumability layer for one extract_entities run — its entire reason for existing is that extraction is an expensive, potentially long-running, cost-capped LLM batch job that WILL sometimes be killed mid-run (Ctrl-C, hitting the cost cap deliberately, an unhandled crash), and re-running it from scratch would both re-spend money on already-processed memories and potentially create duplicate entities/links (though upsertEntity and linkMemoryToEntity are themselves idempotent, so resume here is mainly a cost-savings mechanism rather than a correctness requirement).

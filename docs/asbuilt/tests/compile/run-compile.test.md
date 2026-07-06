@@ -1,11 +1,12 @@
 ---
-type: Module
+type: Test
 title: tests/compile/run-compile.test.ts
 description: Skeleton concept for tests/compile/run-compile.test.ts (extracted; 5 symbols).
 resource: tests/compile/run-compile.test.ts
 tags:
   - tests
   - module
+  - test
   - function
   - interface
 enrichment: accuracy-audited
@@ -19,7 +20,7 @@ explains:
   - tests/compile/run-compile.test.ts#mockProvider
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure

@@ -17,7 +17,7 @@ explains:
   - src/entities/extractor.ts#runExtractor
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -34,19 +34,14 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 | `runExtractor` | function | 38-186 | yes |
 
 ## Calls out
-- `finalize` → [EntityState.close](/src/entities/state.md)
-- `finalize` → [EntityState.writeRunSummary](/src/entities/state.md)
 - `runExtractor` → [buildExtractionPrompt](/src/entities/prompt.md)
 - `runExtractor` → [currentScope](/src/env.md)
 - `runExtractor` → `finalize` (same file)
 - `runExtractor` → [findCandidateMemories](/src/entities/db.md)
 - `runExtractor` → [getTopEntitiesByFrequency](/src/entities/db.md)
-- `runExtractor` → [EntityState.isMemoryTerminal](/src/entities/state.md)
 - `runExtractor` → [linkMemoryToEntity](/src/entities/db.md)
 - `runExtractor` → [normalizeEntityName](/src/entities/normalize.md)
 - `runExtractor` → [parseExtractionResponse](/src/entities/prompt.md)
-- `runExtractor` → [EntityState.recordParseFailed](/src/entities/state.md)
-- `runExtractor` → [EntityState.recordTerminal](/src/entities/state.md)
 - `runExtractor` → [upsertEntity](/src/entities/db.md)
 - `runExtractor` → [withLLMCallSpan](/src/telemetry.md)
 

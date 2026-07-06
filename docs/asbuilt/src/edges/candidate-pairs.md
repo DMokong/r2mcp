@@ -17,7 +17,7 @@ explains:
   - src/edges/candidate-pairs.ts#findCandidatePairs
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -39,7 +39,6 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 
 ## Called by
 - `main` in [src/cli/classify-edges.ts](/src/cli/classify-edges.md)
-- `runClassifier` in [src/edges/classifier.ts](/src/edges/classifier.md)
 
 # Explanation
 This is the cheapest of three progressively more expensive filters in the edge classification pipeline (SQL pre-filter -> Stage 1 Haiku -> Stage 2 Opus). Its entire job is to shrink an O(n^2) candidate space down to pairs that are even plausibly related, using only metadata (`topics`, `people` array columns) that Postgres can intersect cheaply — no LLM call happens here. A future reader wondering why a given pair of memories never got classified should check this function first: if the pair doesn't clear >=2 shared topics or >=1 shared person, it never even reaches Stage 1, and there is no logging of "near misses."

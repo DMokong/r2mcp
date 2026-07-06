@@ -17,7 +17,7 @@ explains:
   - src/compiler/run.ts#validateOptions
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -45,11 +45,8 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 - `runCompile` → [emitFrontmatter](/src/compiler/frontmatter.md)
 - `runCompile` → [manifestPath](/src/compiler/manifest.md)
 - `runCompile` → `mergeManifest` (same file)
-- `runCompile` → [readManifest](/src/compiler/manifest.md)
 - `runCompile` → [topicToSlug](/src/compiler/clustering.md)
 - `runCompile` → `validateOptions` (same file)
-- `runCompile` → [RunSummaryWriter.write](/src/edges/state.md)
-- `runCompile` → [writeManifest](/src/compiler/manifest.md)
 
 ## Called by
 - `main` in [src/cli/compile-wiki.ts](/src/cli/compile-wiki.md)

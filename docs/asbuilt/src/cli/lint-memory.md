@@ -19,7 +19,7 @@ explains:
   - src/cli/lint-memory.ts#renderReport
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -35,13 +35,11 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 
 ## Calls out
 - `main` → [closeDb](/src/db.md)
-- `main` → [exit](/src/index.ts.md)
 - `main` → [getPool](/src/db.md)
 - `main` → [initDb](/src/db.md)
 - `main` → `parseArgs` (same file)
 - `main` → `renderReport` (same file)
 - `main` → [runLint](/src/lint/run.md)
-- `main` → [RunSummaryWriter.write](/src/edges/state.md)
 - `parseArgs` → `isCheck` (same file)
 
 # Explanation

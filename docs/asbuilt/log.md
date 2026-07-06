@@ -1,5 +1,8 @@
 # Bundle Update Log
 
+## 2026-07-06
+* **Refresh**: 18 regenerated, 0 new, 0 stale.
+
 ## 2026-07-05
 * **Refresh**: 0 regenerated, 0 new, 0 stale.
 * **Fold**: BACKFILL-r2mcp-01 enriched [src/breadcrumbs.ts](/src/breadcrumbs.md) (accuracy-audited).

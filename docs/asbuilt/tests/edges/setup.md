@@ -1,11 +1,12 @@
 ---
-type: Module
+type: Test
 title: tests/edges/setup.ts
 description: Skeleton concept for tests/edges/setup.ts (extracted; 4 symbols).
 resource: tests/edges/setup.ts
 tags:
   - tests
   - module
+  - test
   - function
 enrichment: accuracy-audited
 from:
@@ -17,7 +18,7 @@ explains:
   - tests/edges/setup.ts#teardownEdgesTestDb
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure

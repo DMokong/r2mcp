@@ -23,7 +23,7 @@ explains:
   - src/edges/state.ts#pairHash
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -51,20 +51,7 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 | `pairHash` | function | 22-25 | yes |
 
 ## Called by
-- `main` in [src/cli/classify-edges.ts](/src/cli/classify-edges.md)
-- `main` in [src/cli/compile-wiki.ts](/src/cli/compile-wiki.md)
-- `main` in [src/cli/export-jsonl.ts](/src/cli/export-jsonl.md)
-- `main` in [src/cli/extract-entities.ts](/src/cli/extract-entities.md)
-- `runner` in [src/cli/extract-entities.ts](/src/cli/extract-entities.md)
-- `main` in [src/cli/import-jsonl.ts](/src/cli/import-jsonl.md)
-- `main` in [src/cli/lint-memory.ts](/src/cli/lint-memory.md)
-- `runCompile` in [src/compiler/run.ts](/src/compiler/run.md)
 - `processPair` in [src/edges/classifier.ts](/src/edges/classifier.md)
-- `processPair` in [src/edges/classifier.ts](/src/edges/classifier.md)
-- `processPair` in [src/edges/classifier.ts](/src/edges/classifier.md)
-- `runClassifier` in [src/edges/classifier.ts](/src/edges/classifier.md)
-- `runClassifier` in [src/edges/classifier.ts](/src/edges/classifier.md)
-- `runClassifier` in [src/edges/classifier.ts](/src/edges/classifier.md)
 
 # Explanation
 state.ts is the crash-resumability backbone for the two-stage (cheap Haiku screen, then expensive Opus classify) edge-classification pipeline. Classification runs can be long, cost real money per LLM call, and get killed mid-run (Ctrl-C, OOM, hitting the cost cap); state.ts's job is ensuring a `resume_run_id` re-invocation picks up exactly where the prior run stopped without re-spending on pairs already resolved.

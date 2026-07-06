@@ -17,7 +17,7 @@ explains:
   - src/cli/export-jsonl.ts#parseArgs
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -35,7 +35,6 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 - `main` → [exportToLines](/src/backup/exporter.md)
 - `main` → [getPool](/src/db.md)
 - `main` → `parseArgs` (same file)
-- `main` → [RunSummaryWriter.write](/src/edges/state.md)
 
 # Explanation
 export-jsonl.ts and import-jsonl.ts (claw-i6td.4) form the backup/restore pair for the whole memory database — a plain JSONL dump/replay mechanism independent of `pg_dump`, chosen so an export can be inspected, diffed, and even hand-edited as line-delimited JSON before being replayed elsewhere. A future reader should read this file together with src/backup/exporter.ts (the actual row-to-line serialization) and src/backup/importer.ts (the replay/idempotency logic) — this file is deliberately thin, just argument parsing and stdout/file routing.

@@ -24,7 +24,7 @@ explains:
   - src/cli/extract-entities.ts#runner
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -53,11 +53,8 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 - `main` → `parseArgs` (same file)
 - `main` → [runExtractor](/src/entities/extractor.md)
 - `main` → [selectProvider](/src/providers/index.ts.md)
-- `main` → [RunSummaryWriter.write](/src/edges/state.md)
 - `parseArgs` → [isProviderName](/src/providers/index.ts.md)
-- `runner` → [exit](/src/index.ts.md)
 - `runner` → `main` (same file)
-- `runner` → [RunSummaryWriter.write](/src/edges/state.md)
 
 # Explanation
 The SPEC-046 entity-extraction CLI, structurally parallel to classify-edges.ts (same provider-selection precedence, same resume-by-run-id pattern, same cost-cap philosophy) but for a different pipeline: finding and linking named entities across memories rather than classifying relations between pairs of memories. A future reader debugging entity extraction should treat this file as wiring only — the substantive logic is in src/entities/extractor.ts, src/entities/prompt.ts, and src/entities/db.ts.

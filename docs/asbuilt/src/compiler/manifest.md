@@ -18,7 +18,7 @@ explains:
   - src/compiler/manifest.ts#writeManifest
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -44,8 +44,6 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 - `writeManifest` → `manifestPath` (same file)
 
 ## Called by
-- `runCompile` in [src/compiler/run.ts](/src/compiler/run.md)
-- `runCompile` in [src/compiler/run.ts](/src/compiler/run.md)
 - `runCompile` in [src/compiler/run.ts](/src/compiler/run.md)
 - `runCompile` in [src/compiler/run.ts](/src/compiler/run.md)
 

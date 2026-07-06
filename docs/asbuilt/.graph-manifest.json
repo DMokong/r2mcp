@@ -4,7 +4,7 @@
     "name": "web-tree-sitter",
     "version": "0.24.5"
   },
-  "target_commit": "aa94fd8d29679a0a9e9127db9d51049a92fdefe8",
+  "target_commit": "0b61580a5736bf80325b7eeae5c1606844e8632a",
   "symbols": [
     {
       "id": "src/backup/exporter.ts#ExportHeader",
@@ -4883,7 +4883,7 @@
     {
       "from": "src/cli/classify-edges.ts#main",
       "toName": "exit",
-      "resolved": "src/index.ts#exit"
+      "resolved": null
     },
     {
       "from": "src/cli/classify-edges.ts#main",
@@ -4953,7 +4953,7 @@
     {
       "from": "src/cli/classify-edges.ts#main",
       "toName": "write",
-      "resolved": "src/edges/state.ts#RunSummaryWriter.write"
+      "resolved": null
     },
     {
       "from": "src/cli/classify-edges.ts#parseArgs",
@@ -5043,7 +5043,7 @@
     {
       "from": "src/cli/compile-wiki.ts#main",
       "toName": "exit",
-      "resolved": "src/index.ts#exit"
+      "resolved": null
     },
     {
       "from": "src/cli/compile-wiki.ts#main",
@@ -5113,7 +5113,7 @@
     {
       "from": "src/cli/compile-wiki.ts#main",
       "toName": "write",
-      "resolved": "src/edges/state.ts#RunSummaryWriter.write"
+      "resolved": null
     },
     {
       "from": "src/cli/compile-wiki.ts#parseArgs",
@@ -5228,7 +5228,7 @@
     {
       "from": "src/cli/export-jsonl.ts#main",
       "toName": "write",
-      "resolved": "src/edges/state.ts#RunSummaryWriter.write"
+      "resolved": null
     },
     {
       "from": "src/cli/export-jsonl.ts#main",
@@ -5293,7 +5293,7 @@
     {
       "from": "src/cli/extract-entities.ts#main",
       "toName": "write",
-      "resolved": "src/edges/state.ts#RunSummaryWriter.write"
+      "resolved": null
     },
     {
       "from": "src/cli/extract-entities.ts#parentContextFromEnv",
@@ -5338,7 +5338,7 @@
     {
       "from": "src/cli/extract-entities.ts#runner",
       "toName": "exit",
-      "resolved": "src/index.ts#exit"
+      "resolved": null
     },
     {
       "from": "src/cli/extract-entities.ts#runner",
@@ -5348,7 +5348,7 @@
     {
       "from": "src/cli/extract-entities.ts#runner",
       "toName": "write",
-      "resolved": "src/edges/state.ts#RunSummaryWriter.write"
+      "resolved": null
     },
     {
       "from": "src/cli/import-jsonl.ts#main",
@@ -5358,7 +5358,7 @@
     {
       "from": "src/cli/import-jsonl.ts#main",
       "toName": "exit",
-      "resolved": "src/index.ts#exit"
+      "resolved": null
     },
     {
       "from": "src/cli/import-jsonl.ts#main",
@@ -5418,7 +5418,7 @@
     {
       "from": "src/cli/import-jsonl.ts#main",
       "toName": "write",
-      "resolved": "src/edges/state.ts#RunSummaryWriter.write"
+      "resolved": null
     },
     {
       "from": "src/cli/lint-memory.ts#isCheck",
@@ -5433,7 +5433,7 @@
     {
       "from": "src/cli/lint-memory.ts#main",
       "toName": "exit",
-      "resolved": "src/index.ts#exit"
+      "resolved": null
     },
     {
       "from": "src/cli/lint-memory.ts#main",
@@ -5473,7 +5473,7 @@
     {
       "from": "src/cli/lint-memory.ts#main",
       "toName": "write",
-      "resolved": "src/edges/state.ts#RunSummaryWriter.write"
+      "resolved": null
     },
     {
       "from": "src/cli/lint-memory.ts#parseArgs",
@@ -5703,7 +5703,7 @@
     {
       "from": "src/cli/setup.ts#setup",
       "toName": "exit",
-      "resolved": "src/index.ts#exit"
+      "resolved": null
     },
     {
       "from": "src/cli/setup.ts#setup",
@@ -5728,7 +5728,7 @@
     {
       "from": "src/cli/setup.ts#setup",
       "toName": "release",
-      "resolved": "src/providers/semaphore.ts#Semaphore.release"
+      "resolved": null
     },
     {
       "from": "src/cli/setup.ts#setup",
@@ -6243,7 +6243,7 @@
     {
       "from": "src/compiler/run.ts#runCompile",
       "toName": "readManifest",
-      "resolved": "src/compiler/manifest.ts#readManifest"
+      "resolved": null
     },
     {
       "from": "src/compiler/run.ts#runCompile",
@@ -6278,7 +6278,7 @@
     {
       "from": "src/compiler/run.ts#runCompile",
       "toName": "write",
-      "resolved": "src/edges/state.ts#RunSummaryWriter.write"
+      "resolved": null
     },
     {
       "from": "src/compiler/run.ts#runCompile",
@@ -6288,7 +6288,7 @@
     {
       "from": "src/compiler/run.ts#runCompile",
       "toName": "writeManifest",
-      "resolved": "src/compiler/manifest.ts#writeManifest"
+      "resolved": null
     },
     {
       "from": "src/compiler/run.ts#validateOptions",
@@ -6468,7 +6468,7 @@
     {
       "from": "src/db.ts#connectDb",
       "toName": "release",
-      "resolved": "src/providers/semaphore.ts#Semaphore.release"
+      "resolved": null
     },
     {
       "from": "src/db.ts#initDb",
@@ -6523,12 +6523,12 @@
     {
       "from": "src/edges/classifier.ts#launch",
       "toName": "withPermit",
-      "resolved": "src/providers/semaphore.ts#Semaphore.withPermit"
+      "resolved": null
     },
     {
       "from": "src/edges/classifier.ts#processPair",
       "toName": "append",
-      "resolved": "src/edges/state.ts#StateStore.append"
+      "resolved": null
     },
     {
       "from": "src/edges/classifier.ts#processPair",
@@ -6568,7 +6568,7 @@
     {
       "from": "src/edges/classifier.ts#processPair",
       "toName": "write",
-      "resolved": "src/edges/state.ts#RunSummaryWriter.write"
+      "resolved": null
     },
     {
       "from": "src/edges/classifier.ts#runClassifier",
@@ -6598,7 +6598,7 @@
     {
       "from": "src/edges/classifier.ts#runClassifier",
       "toName": "findCandidatePairs",
-      "resolved": "src/edges/candidate-pairs.ts#findCandidatePairs"
+      "resolved": null
     },
     {
       "from": "src/edges/classifier.ts#runClassifier",
@@ -6608,7 +6608,7 @@
     {
       "from": "src/edges/classifier.ts#runClassifier",
       "toName": "markActiveRun",
-      "resolved": "src/edges/state.ts#StateStore.markActiveRun"
+      "resolved": null
     },
     {
       "from": "src/edges/classifier.ts#runClassifier",
@@ -6628,7 +6628,7 @@
     {
       "from": "src/edges/classifier.ts#runClassifier",
       "toName": "terminalPairs",
-      "resolved": "src/edges/state.ts#StateStore.terminalPairs"
+      "resolved": null
     },
     {
       "from": "src/edges/classifier.ts#runClassifier",
@@ -6643,12 +6643,12 @@
     {
       "from": "src/edges/classifier.ts#runClassifier",
       "toName": "withPermit",
-      "resolved": "src/providers/semaphore.ts#Semaphore.withPermit"
+      "resolved": null
     },
     {
       "from": "src/edges/classifier.ts#runClassifier",
       "toName": "write",
-      "resolved": "src/edges/state.ts#RunSummaryWriter.write"
+      "resolved": null
     },
     {
       "from": "src/edges/signals.ts#getSignalsForMemoryIds",
@@ -7043,7 +7043,7 @@
     {
       "from": "src/entities/extractor.ts#finalize",
       "toName": "close",
-      "resolved": "src/entities/state.ts#EntityState.close"
+      "resolved": null
     },
     {
       "from": "src/entities/extractor.ts#finalize",
@@ -7053,7 +7053,7 @@
     {
       "from": "src/entities/extractor.ts#finalize",
       "toName": "writeRunSummary",
-      "resolved": "src/entities/state.ts#EntityState.writeRunSummary"
+      "resolved": null
     },
     {
       "from": "src/entities/extractor.ts#runExtractor",
@@ -7093,7 +7093,7 @@
     {
       "from": "src/entities/extractor.ts#runExtractor",
       "toName": "isMemoryTerminal",
-      "resolved": "src/entities/state.ts#EntityState.isMemoryTerminal"
+      "resolved": null
     },
     {
       "from": "src/entities/extractor.ts#runExtractor",
@@ -7123,12 +7123,12 @@
     {
       "from": "src/entities/extractor.ts#runExtractor",
       "toName": "recordParseFailed",
-      "resolved": "src/entities/state.ts#EntityState.recordParseFailed"
+      "resolved": null
     },
     {
       "from": "src/entities/extractor.ts#runExtractor",
       "toName": "recordTerminal",
-      "resolved": "src/entities/state.ts#EntityState.recordTerminal"
+      "resolved": null
     },
     {
       "from": "src/entities/extractor.ts#runExtractor",
@@ -7668,7 +7668,7 @@
     {
       "from": "src/migrations.ts#applyMigrations",
       "toName": "release",
-      "resolved": "src/providers/semaphore.ts#Semaphore.release"
+      "resolved": null
     },
     {
       "from": "src/migrations.ts#expectedSchemaVersion",

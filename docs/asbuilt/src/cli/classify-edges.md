@@ -17,7 +17,7 @@ explains:
   - src/cli/classify-edges.ts#parseArgs
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -32,7 +32,6 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 ## Calls out
 - `main` → [closeDb](/src/db.md)
 - `main` → [currentScope](/src/env.md)
-- `main` → [exit](/src/index.ts.md)
 - `main` → [findCandidatePairs](/src/edges/candidate-pairs.md)
 - `main` → [getPool](/src/db.md)
 - `main` → [initDb](/src/db.md)
@@ -42,7 +41,6 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 - `main` → [stage1HaikuFilter](/src/edges/stage1-haiku.md)
 - `main` → [stage2OpusClassify](/src/edges/stage2-opus.md)
 - `main` → [withToolSpan](/src/telemetry.md)
-- `main` → [RunSummaryWriter.write](/src/edges/state.md)
 - `parseArgs` → [isProviderName](/src/providers/index.ts.md)
 
 # Explanation

@@ -21,7 +21,7 @@ explains:
   - src/providers/semaphore.ts#Semaphore.withPermit
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -43,13 +43,6 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 ## Calls out
 - `Semaphore.withPermit` → `Semaphore.acquire` (same file)
 - `Semaphore.withPermit` → `Semaphore.release` (same file)
-
-## Called by
-- `setup` in [src/cli/setup.ts](/src/cli/setup.md)
-- `connectDb` in [src/db.ts](/src/db.md)
-- `launch` in [src/edges/classifier.ts](/src/edges/classifier.md)
-- `runClassifier` in [src/edges/classifier.ts](/src/edges/classifier.md)
-- `applyMigrations` in [src/migrations.ts](/src/migrations.md)
 
 # Explanation
 A minimal, dependency-free counting semaphore that is provider-agnostic by design — despite living in `src/providers/`, it is not wired to any provider automatically, and it is not called anywhere else inside `src/providers/` itself. There is exactly one verified production call site today: `src/edges/classifier.ts#runClassifier`, which constructs its own `new Semaphore(concurrency)` sized from `ClassifierDeps.concurrencyLimit` (intended to be set to the active provider's `LLMProvider.concurrencyLimit` at the call site, per that file's own comment referencing `D.R6, D.AC8`) and wraps each candidate pair's Stage-1/Stage-2 classification work in `withPermit(...)` to bound concurrent LLM dispatch during an edge-classification run. Do not trust the graph manifest's call-edge data for consumption claims about this class: it links `Semaphore.release` to `src/db.ts` and `src/migrations.ts` via a bare-name collision with Node's pg `PoolClient.release()` method — an unrelated API that happens to share a method name. Neither file imports or references `Semaphore` at all; this was verified by reading both files directly, not by trusting the graph. (A prior version of this artifact repeated the false manifest-derived claim; it was corrected after an independent audit flagged it — treat manifest call edges as leads to verify, not facts, for exactly this reason.)

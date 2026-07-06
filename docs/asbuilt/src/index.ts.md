@@ -17,7 +17,7 @@ explains:
   - src/index.ts#wireParentDisconnectHandlers
 stale: false
 stale_reason: ""
-graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
+graph_hash: c192643d124600fd68491305707bec2b09c19febe0921e729af00e7c9e27905f
 ---
 
 # Structure
@@ -34,14 +34,6 @@ graph_hash: 722abd60fe9a14221204daed15ffc79c1ccb916aa2f11bc37b8d327971cb1d46
 - `main` → [initDb](/src/db.md)
 - `main` → `wireParentDisconnectHandlers` (same file)
 - `wireParentDisconnectHandlers` → `exit` (same file)
-
-## Called by
-- `main` in [src/cli/classify-edges.ts](/src/cli/classify-edges.md)
-- `main` in [src/cli/compile-wiki.ts](/src/cli/compile-wiki.md)
-- `runner` in [src/cli/extract-entities.ts](/src/cli/extract-entities.md)
-- `main` in [src/cli/import-jsonl.ts](/src/cli/import-jsonl.md)
-- `main` in [src/cli/lint-memory.ts](/src/cli/lint-memory.md)
-- `setup` in [src/cli/setup.ts](/src/cli/setup.md)
 
 # Explanation
 This is the r2mcp MCP server process entrypoint — the executable an MCP client (Claude Code, the Slack bot, etc.) spawns over stdio. It wires up an `@modelcontextprotocol/sdk` `McpServer` instance, registers all 11 tools the memory system exposes (remember, recall, search, stats, reject, meditate, compile, classify, extract_entities, dump_edges_sidecar, lint), loads `.env` manually (MCP subprocesses don't inherit parent shell env), resolves the project's scope once at boot, and connects a `StdioServerTransport`. A future reader should treat this file as pure wiring/composition — the substantive logic for each tool lives in `src/tools/*.ts`; index.ts's own job is zod schema declaration, telemetry span wrapping (`withToolSpan`), response shaping (`asMcpResponse`), and process lifecycle.
