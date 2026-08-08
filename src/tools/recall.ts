@@ -14,8 +14,11 @@ const { toSql } = pgvector;
  * filter. Otherwise restrict to the given scopes (normally [current, 'global']).
  * Pushes the array onto params and returns the SQL fragment (empty when null).
  * `prefix` is the table alias, e.g. 'm.' for queries that alias memories as m.
+ *
+ * Exported for stats() (claw-tsgd) so both tools derive the scope predicate
+ * from one implementation.
  */
-function scopeClause(prefix: string, params: unknown[], scopes: string[] | null): string {
+export function scopeClause(prefix: string, params: unknown[], scopes: string[] | null): string {
   if (scopes === null) return '';
   params.push(scopes);
   return ` AND ${prefix}project_scope = ANY($${params.length}::text[])`;

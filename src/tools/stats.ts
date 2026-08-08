@@ -1,4 +1,13 @@
 import { getPool } from '../db.js';
+import { currentScope } from '../env.js';
+import { scopeClause } from './recall.js';
+
+export interface StatsInput {
+  /** claw-tsgd: report a SPECIFIC scope (+ global) instead of the env's current scope. */
+  scope?: string;
+  /** claw-tsgd: when true, aggregate across ALL project scopes (pre-0.3.1 behavior). */
+  all_scopes?: boolean;
+}
 
 export interface StatsResult {
   total: number;
@@ -28,8 +37,15 @@ export interface StatsResult {
   };
 }
 
-export async function stats(): Promise<StatsResult> {
+export async function stats(input: StatsInput = {}): Promise<StatsResult> {
   const pool = getPool();
+
+  // claw-tsgd: default to the env's scope + global, mirroring recall(). Every
+  // query below shares this one predicate and params array — a bare
+  // `FROM memories` here silently reports another project's corpus.
+  const scopes = input.all_scopes ? null : [input.scope ?? currentScope(), 'global'];
+  const params: unknown[] = [];
+  const where = scopes === null ? '' : `WHERE true${scopeClause('', params, scopes)}`;
 
   // Run all queries in parallel
   const [
@@ -42,49 +58,55 @@ export async function stats(): Promise<StatsResult> {
     lastWriteResult,
   ] = await Promise.all([
     // Total count
-    pool.query('SELECT COUNT(*)::int AS total FROM memories'),
+    pool.query(`SELECT COUNT(*)::int AS total FROM memories ${where}`, params),
 
     // By tier
-    pool.query(`
-      SELECT tier, COUNT(*)::int AS count
-      FROM memories
-      GROUP BY tier
-    `),
+    pool.query(
+      `SELECT tier, COUNT(*)::int AS count
+       FROM memories ${where}
+       GROUP BY tier`,
+      params,
+    ),
 
     // By type
-    pool.query(`
-      SELECT type, COUNT(*)::int AS count
-      FROM memories
-      GROUP BY type
-    `),
+    pool.query(
+      `SELECT type, COUNT(*)::int AS count
+       FROM memories ${where}
+       GROUP BY type`,
+      params,
+    ),
 
     // Staleness
-    pool.query(`
-      SELECT
-        MIN(created_at) AS oldest_entry,
-        COALESCE(EXTRACT(EPOCH FROM AVG(NOW() - created_at)) / 86400, 0) AS avg_age_days
-      FROM memories
-    `),
+    pool.query(
+      `SELECT
+         MIN(created_at) AS oldest_entry,
+         COALESCE(EXTRACT(EPOCH FROM AVG(NOW() - created_at)) / 86400, 0) AS avg_age_days
+       FROM memories ${where}`,
+      params,
+    ),
 
-    // Top topics (unnest topics array and count)
-    pool.query(`
-      SELECT topic, COUNT(*)::int AS count
-      FROM memories, unnest(topics) AS topic
-      GROUP BY topic
-      ORDER BY count DESC
-      LIMIT 10
-    `),
+    // Top topics (unnest topics array and count). The scope filter has to run
+    // on memories BEFORE the unnest join, hence the subquery.
+    pool.query(
+      `SELECT topic, COUNT(*)::int AS count
+       FROM (SELECT topics FROM memories ${where}) m, unnest(m.topics) AS topic
+       GROUP BY topic
+       ORDER BY count DESC
+       LIMIT 10`,
+      params,
+    ),
 
     // Embedding counts
-    pool.query(`
-      SELECT
-        COUNT(*) FILTER (WHERE embedding IS NOT NULL)::int AS with_embeddings,
-        COUNT(*) FILTER (WHERE embedding IS NULL)::int AS without_embeddings
-      FROM memories
-    `),
+    pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE embedding IS NOT NULL)::int AS with_embeddings,
+         COUNT(*) FILTER (WHERE embedding IS NULL)::int AS without_embeddings
+       FROM memories ${where}`,
+      params,
+    ),
 
     // Last write
-    pool.query('SELECT MAX(updated_at) AS last_write FROM memories'),
+    pool.query(`SELECT MAX(updated_at) AS last_write FROM memories ${where}`, params),
   ]);
 
   // Build tier map

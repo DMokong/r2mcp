@@ -247,16 +247,31 @@ server.tool(
 
 server.tool(
   'stats',
-  'Get system health statistics for r2mcp memory — counts by tier/type, staleness, top topics, embedding index status. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
-  {},
-  async () => {
-    const result = await withToolSpan('stats', {}, async (span) => {
-      const r = await stats();
-      span.setAttribute('total_entries', r.total ?? 0);
-      return r;
-    });
+  'Get system health statistics for r2mcp memory — counts by tier/type, staleness, top topics, embedding index status. Scope-confined to the current scope + global by default. Response includes a next_tools[] array of {name, usage, why} suggested follow-ups (may be empty).',
+  {
+    scope: z
+      .string()
+      .optional()
+      .describe(
+        'claw-tsgd: report a specific project scope (+ global) instead of the server scope.',
+      ),
+    all_scopes: z
+      .boolean()
+      .optional()
+      .describe('claw-tsgd: aggregate across ALL project scopes.'),
+  },
+  async (args) => {
+    const result = await withToolSpan(
+      'stats',
+      { all_scopes: args.all_scopes ?? false },
+      async (span) => {
+        const r = await stats({ scope: args.scope, all_scopes: args.all_scopes });
+        span.setAttribute('total_entries', r.total ?? 0);
+        return r;
+      },
+    );
 
-    return asMcpResponse('stats', result, {});
+    return asMcpResponse('stats', result, args);
   },
 );
 
