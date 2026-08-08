@@ -476,15 +476,23 @@ server.tool(
     out_dir: z
       .string()
       .describe('Absolute path to the directory where edges.json + memories.json land. Required.'),
+    all_scopes: z
+      .boolean()
+      .optional()
+      .describe('claw-z8k8: dump ALL project scopes (default: current scope + global).'),
   },
   async (args) => {
     const result = await withToolSpan(
       'dump_edges_sidecar',
       {
         out_dir: args.out_dir,
+        all_scopes: args.all_scopes ?? false,
       },
       async (span) => {
-        const r = await dumpEdgesSidecarTool({ out_dir: args.out_dir });
+        const r = await dumpEdgesSidecarTool({
+          out_dir: args.out_dir,
+          all_scopes: args.all_scopes,
+        });
         span.setAttribute('memories_count', r.memories_count);
         span.setAttribute('edges_count', r.edges_count);
         return r;

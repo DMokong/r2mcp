@@ -77,7 +77,7 @@ describe.skipIf(!TEST_DB)('dump_edges_sidecar round-trip', () => {
   });
 
   it('writes both JSON files with the correct counts and structure', async () => {
-    const result = await dumpEdgesJsonWithClient(client, outDir);
+    const result = await dumpEdgesJsonWithClient(client, outDir, null);
 
     expect(result.memories_count).toBeGreaterThanOrEqual(2);
     expect(result.edges_count).toBeGreaterThanOrEqual(1);
@@ -102,5 +102,79 @@ describe.skipIf(!TEST_DB)('dump_edges_sidecar round-trip', () => {
     const ids = new Set<string>(memoriesJson.memories.map((m: { id: string }) => m.id));
     expect(ids.has(memId1)).toBe(true);
     expect(ids.has(memId2)).toBe(true);
+  });
+});
+
+/**
+ * claw-z8k8: the dump had no scope filter at all, so a run with
+ * R2MCP_SCOPE=claudeclaw emitted every scope's rows (426 instead of 238 in
+ * production). Edges need filtering on BOTH endpoints — otherwise a scoped
+ * dump emits edges pointing at memories that aren't in the file.
+ */
+describe.skipIf(!TEST_DB)('dump_edges_sidecar scope confinement (claw-z8k8)', () => {
+  let client: pg.Client;
+  let outDir: string;
+  let inScopeId: string;
+  let otherScopeId: string;
+
+  beforeAll(async () => {
+    client = new pg.Client({ connectionString: TEST_DB });
+    await client.connect();
+    outDir = await mkdtemp(join(tmpdir(), 'r2mcp-scope-'));
+
+    const m1 = await client.query(
+      `INSERT INTO memories (content, tier, type, section, fingerprint, project_scope)
+       VALUES ('scope-test in-scope', 'preferences', 'observation', 'scope-test', 'fp-scope-1', 'scope-a')
+       ON CONFLICT (project_scope, fingerprint) DO UPDATE SET content = EXCLUDED.content
+       RETURNING id`,
+    );
+    const m2 = await client.query(
+      `INSERT INTO memories (content, tier, type, section, fingerprint, project_scope)
+       VALUES ('scope-test other-scope', 'preferences', 'observation', 'scope-test', 'fp-scope-2', 'scope-b')
+       ON CONFLICT (project_scope, fingerprint) DO UPDATE SET content = EXCLUDED.content
+       RETURNING id`,
+    );
+    inScopeId = m1.rows[0].id;
+    otherScopeId = m2.rows[0].id;
+
+    // Cross-scope edge: must be EXCLUDED from a scoped dump.
+    await client.query(
+      `INSERT INTO memory_edges (from_memory_id, to_memory_id, relation, confidence, rationale, classifier_version)
+       VALUES ($1, $2, 'related_to', 0.9, 'scope-test edge', 'scope-test')
+       ON CONFLICT DO NOTHING`,
+      [inScopeId, otherScopeId],
+    );
+  });
+
+  afterAll(async () => {
+    await client.query(`DELETE FROM memory_edges WHERE classifier_version = 'scope-test'`);
+    await client.query(`DELETE FROM memories WHERE section = 'scope-test'`);
+    await client.end();
+    await rm(outDir, { recursive: true, force: true });
+  });
+
+  it('scoped dump includes only rows whose project_scope is in the list', async () => {
+    await dumpEdgesJsonWithClient(client, outDir, ['scope-a', 'global']);
+    const memories = JSON.parse(await readFile(join(outDir, 'memories.json'), 'utf-8'));
+    const ids = memories.memories.map((m: { id: string }) => m.id);
+    expect(ids).toContain(inScopeId);
+    expect(ids).not.toContain(otherScopeId);
+  });
+
+  it('scoped dump excludes edges with an out-of-scope endpoint', async () => {
+    await dumpEdgesJsonWithClient(client, outDir, ['scope-a', 'global']);
+    const edges = JSON.parse(await readFile(join(outDir, 'edges.json'), 'utf-8'));
+    const crossScope = edges.edges.filter(
+      (e: { rationale: string }) => e.rationale === 'scope-test edge',
+    );
+    expect(crossScope).toHaveLength(0);
+  });
+
+  it('scopes=null dumps all scopes (explicit escape hatch)', async () => {
+    await dumpEdgesJsonWithClient(client, outDir, null);
+    const memories = JSON.parse(await readFile(join(outDir, 'memories.json'), 'utf-8'));
+    const ids = memories.memories.map((m: { id: string }) => m.id);
+    expect(ids).toContain(inScopeId);
+    expect(ids).toContain(otherScopeId);
   });
 });
