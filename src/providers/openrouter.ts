@@ -11,10 +11,13 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 // OpenRouter routes Anthropic models under their own slugs. Logical model →
 // OpenRouter slug. We pick the same family as the AnthropicProvider so cross-
 // provider agreement (D.AC6) measures abstraction quality, not model swap.
+// claw-x1mg: latest generation per tier, verified against OpenRouter's live
+// /api/v1/models registry on 2026-08-09. Keep in lockstep with anthropic.ts —
+// if these two families diverge, D.AC6 silently starts measuring a model swap.
 const MODEL_IDS: Record<LogicalModel, string> = {
   haiku: 'anthropic/claude-haiku-4.5',
-  opus: 'anthropic/claude-opus-4.7',
-  sonnet: 'anthropic/claude-sonnet-4.6',
+  opus: 'anthropic/claude-opus-5',
+  sonnet: 'anthropic/claude-sonnet-5',
 };
 
 // OpenRouter passes through underlying model pricing. We approximate using

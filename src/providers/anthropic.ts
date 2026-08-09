@@ -8,10 +8,12 @@ import type {
   ProviderName,
 } from './types.js';
 
+// claw-x1mg: latest generation per tier (2026-08-09). Keep in lockstep with
+// openrouter.ts so cross-provider agreement compares like with like.
 const MODEL_IDS: Record<LogicalModel, string> = {
   haiku: 'claude-haiku-4-5-20251001',
-  opus: 'claude-opus-4-7',
-  sonnet: 'claude-sonnet-4-6',
+  opus: 'claude-opus-5',
+  sonnet: 'claude-sonnet-5',
 };
 
 // Per-million-token list prices (USD), public list price as of 2026-05.

@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import type { LLMProvider } from '../providers/types.js';
 import { withLLMCallSpan } from '../telemetry.js';
+import { resolveModelTier } from '../model-tier.js';
 import { buildExtractionPrompt, parseExtractionResponse } from './prompt.js';
 import {
   findCandidateMemories,
@@ -99,10 +100,12 @@ export async function runExtractor(opts: RunExtractorOptions): Promise<RunSummar
       // claw-1ejd: wrap the LLM call in a child span so the parent context
       // restored from OTEL_TRACEPARENT (set by the MCP wrapper) has a
       // concrete operation to inherit. No-op when SDK is not initialized.
+      // claw-x1mg: env-resolvable tier, resolved once for span + request.
+      const model = resolveModelTier('extract-entities');
       const result = await withLLMCallSpan(
         'memory.extract_entities.call',
-        { provider: opts.provider.name, model: 'haiku' },
-        () => opts.provider.complete({ prompt, model: 'haiku' }),
+        { provider: opts.provider.name, model },
+        () => opts.provider.complete({ prompt, model }),
       );
       total_cost_usd += result.cost_usd;
       rawResponse = result.response;

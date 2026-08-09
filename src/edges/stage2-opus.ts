@@ -1,5 +1,6 @@
 import type { LLMProvider } from '../providers/types.js';
 import { withLLMCallSpan } from '../telemetry.js';
+import { resolveModelTier } from '../model-tier.js';
 import type { EdgeRelation } from './types.js';
 
 export interface MemoryForClassify {
@@ -106,12 +107,14 @@ export async function stage2OpusClassify(
   const userPrompt = `Memory A (id=${pair.from.id}, type=${pair.from.type}): ${pair.from.content}\n\nMemory B (id=${pair.to.id}, type=${pair.to.type}): ${pair.to.content}`;
   // claw-1ejd: wrap the LLM call so the parent OTEL_TRACEPARENT context
   // has a concrete child span to inherit when this runs as a subprocess.
+  // claw-x1mg: env-resolvable tier, resolved once for span + request.
+  const model = resolveModelTier('classify-edges-stage2');
   const result = await withLLMCallSpan(
     'memory.classify_edges.call',
-    { provider: provider.name, model: 'opus' },
+    { provider: provider.name, model },
     () =>
       provider.complete({
-        model: 'opus',
+        model,
         system: STAGE2_SYSTEM,
         prompt: userPrompt,
         max_tokens: STAGE2_MAX_OUTPUT_TOKENS,

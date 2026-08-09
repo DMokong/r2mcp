@@ -19,10 +19,13 @@ import type {
  */
 
 // Map logical models to the model identifiers Claude Code's CLI accepts.
+// claw-x1mg: keep these on the LATEST generation of each tier — a stale id
+// here is invisible until a job fails at runtime. Validated against the
+// installed CLI on 2026-08-09.
 const MODEL_IDS: Record<LogicalModel, string> = {
   haiku: 'claude-haiku-4-5',
-  opus: 'claude-opus-4-7',
-  sonnet: 'claude-sonnet-4-6',
+  opus: 'claude-opus-5',
+  sonnet: 'claude-sonnet-5',
 };
 
 const DEFAULT_PROBE_TIMEOUT_MS = 5_000;

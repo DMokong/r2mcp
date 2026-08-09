@@ -1,5 +1,6 @@
 import type { LLMProvider } from '../providers/types.js';
 import { withLLMCallSpan } from '../telemetry.js';
+import { resolveModelTier } from '../model-tier.js';
 
 export interface PairForFilter {
   from: { id: string; content: string };
@@ -41,12 +42,16 @@ export async function stage1HaikuFilter(
   const userPrompt = `Memory A (id=${pair.from.id}): ${pair.from.content}\n\nMemory B (id=${pair.to.id}): ${pair.to.content}`;
   // claw-1ejd: wrap the LLM call so the parent OTEL_TRACEPARENT context
   // has a concrete child span to inherit when this runs as a subprocess.
+  // claw-x1mg: tier is env-resolvable and resolved once — the span attribute
+  // and the request always report the same model. The filename still says
+  // "haiku" for import stability; the shipped default is now sonnet.
+  const model = resolveModelTier('classify-edges-stage1');
   const result = await withLLMCallSpan(
     'memory.classify_edges.call',
-    { provider: provider.name, model: 'haiku' },
+    { provider: provider.name, model },
     () =>
       provider.complete({
-        model: 'haiku',
+        model,
         system: STAGE1_SYSTEM,
         prompt: userPrompt,
         max_tokens: STAGE1_MAX_OUTPUT_TOKENS,

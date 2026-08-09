@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { stage1HaikuFilter, parseStage1Response } from '../../src/edges/stage1-haiku.js';
+import { resolveModelTier } from '../../src/model-tier.js';
 import type { LLMProvider } from '../../src/providers/types.js';
 
 function makeMockProvider(response: string, cost_usd: number): LLMProvider {
@@ -41,8 +42,11 @@ describe('stage1HaikuFilter', () => {
     expect(result.pass).toBe(true);
     expect(result.cost_usd).toBeCloseTo(0.00028, 6);
     expect(provider.complete).toHaveBeenCalledWith(
+      // claw-x1mg: stage 1's tier is now env-resolved and no longer haiku by
+      // default. Asserting on the resolver keeps this test honest if the
+      // shipped default changes again, instead of re-pinning a literal.
       expect.objectContaining({
-        model: 'haiku',
+        model: resolveModelTier('classify-edges-stage1'),
         system: expect.stringContaining('relation'),
         prompt: expect.stringContaining('use library X'),
         max_tokens: expect.any(Number),

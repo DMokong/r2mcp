@@ -10,6 +10,7 @@
 import { clusterByTopic, topicTitle } from './clustering.js';
 import { tierSystemPrompt, tierClusterUserPrompt } from './prompts.js';
 import { withLLMCallSpan } from '../telemetry.js';
+import { resolveModelTier } from '../model-tier.js';
 import type { CompileSectionResult, CompileTierInput, Tier } from './types.js';
 
 const TIER_HEADERS: Record<Tier, string> = {
@@ -58,12 +59,15 @@ export async function compileTier(input: CompileTierInput): Promise<CompileSecti
     headers.push(heading);
 
     // claw-1ejd: wrap LLM call for cross-process trace inheritance.
+    // claw-x1mg: resolve the tier once and reuse it for both the span attribute
+    // and the request, so telemetry can never disagree with what actually ran.
+    const model = resolveModelTier('compile-wiki');
     const result = await withLLMCallSpan(
       'memory.compile_wiki.call',
-      { provider: provider.name, model: 'haiku' },
+      { provider: provider.name, model },
       () =>
         provider.complete({
-          model: 'haiku',
+          model,
           system: tierSystemPrompt(tier),
           prompt: tierClusterUserPrompt(cluster.topic, cluster.memories),
           max_tokens: MAX_TOKENS_PER_CLUSTER,

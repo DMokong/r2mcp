@@ -16,6 +16,7 @@
 import { effectiveDate, memoriesForTopic } from './clustering.js';
 import { topicSectionUserPrompt, topicSystemPrompt } from './prompts.js';
 import { withLLMCallSpan } from '../telemetry.js';
+import { resolveModelTier } from '../model-tier.js';
 import type { CompileSectionResult, CompileTopicInput, MemoryForCompile } from './types.js';
 
 const SECTION_NAMES = ['Summary', 'Key Decisions', 'Open Questions'] as const;
@@ -57,12 +58,15 @@ export async function compileTopic(input: CompileTopicInput): Promise<CompileSec
     const heading = `## ${section}`;
     headers.push(heading);
     // claw-1ejd: wrap LLM call for cross-process trace inheritance.
+    // claw-x1mg: resolve the tier once and reuse it for both the span attribute
+    // and the request, so telemetry can never disagree with what actually ran.
+    const model = resolveModelTier('compile-wiki');
     const result = await withLLMCallSpan(
       'memory.compile_wiki.call',
-      { provider: provider.name, model: 'haiku' },
+      { provider: provider.name, model },
       () =>
         provider.complete({
-          model: 'haiku',
+          model,
           system: topicSystemPrompt(),
           prompt: topicSectionUserPrompt(topic, section, relevant),
           max_tokens: MAX_TOKENS_PER_SECTION,

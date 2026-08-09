@@ -200,6 +200,8 @@ consumers, **the `.mcp.json` `env` block is the primary config surface**
 | `ANTHROPIC_API_KEY` | Optional | Only for `--provider=anthropic` on classifier/compile runs. |
 | `R2MCP_CLASSIFIER_PROVIDER` | Optional | Pin a provider (`claude-code` \| `anthropic` \| `openrouter`) instead of auto-fallback. |
 | `R2MCP_EDGE_MAX_USD` / `R2MCP_COMPILE_MAX_USD` / `R2MCP_ENTITY_MAX_USD` | Optional | Cost caps for the batch jobs (defaults `$1.00`). |
+| `R2MCP_MODEL_TIER` | Optional | Global model tier (`haiku` \| `sonnet` \| `opus`) for every LLM call site — see [Model Tiers](#model-tiers). |
+| `R2MCP_COMPILE_WIKI_MODEL` / `R2MCP_CLASSIFY_EDGES_STAGE1_MODEL` / `R2MCP_CLASSIFY_EDGES_STAGE2_MODEL` / `R2MCP_EXTRACT_ENTITIES_MODEL` | Optional | Per-call-site tier overrides. Each beats `R2MCP_MODEL_TIER` for its own call site. |
 
 The server also loads a `.env` file from its working directory at startup
 (non-clobbering — real environment variables always win). A `.env` at the
@@ -489,6 +491,47 @@ The fallback prefers `claude-code` so a Max-plan user pays nothing by default.
 
 OpenRouter's primary role remains text→vector embeddings. Its classifier /
 compile use is opt-in per invocation, never auto-routed for embeddings.
+
+## Model tiers
+
+The provider decides *where* a call goes; the **tier** decides *which* model
+answers it. Tiers are logical (`haiku` / `sonnet` / `opus`) — each provider maps
+them to a concrete model id in its own `MODEL_IDS` table, so retuning a tier
+never means hardcoding a vendor model string at a call site.
+
+Every call site resolves its tier from the environment at call time, so you can
+retune a scheduled job by editing its launchd/cron env — no republish, no
+re-vendor.
+
+| Call site | Default | Purpose-specific override |
+|-----------|---------|---------------------------|
+| Wiki compile (tier + topic pages) | `sonnet` | `R2MCP_COMPILE_WIKI_MODEL` |
+| Edge classify — stage 1 (filter) | `sonnet` | `R2MCP_CLASSIFY_EDGES_STAGE1_MODEL` |
+| Edge classify — stage 2 (adjudicate) | `opus` | `R2MCP_CLASSIFY_EDGES_STAGE2_MODEL` |
+| Entity extraction | `sonnet` | `R2MCP_EXTRACT_ENTITIES_MODEL` |
+
+**Resolution order** (first hit wins): the purpose-specific variable →
+`R2MCP_MODEL_TIER` → the built-in default.
+
+```bash
+# everything on opus for one expensive backfill
+R2MCP_MODEL_TIER=opus npm run edges:classify
+
+# global sonnet, but adjudicate on opus
+R2MCP_MODEL_TIER=sonnet R2MCP_CLASSIFY_EDGES_STAGE2_MODEL=opus npm run edges:classify
+```
+
+Two deliberate choices worth knowing:
+
+- **Edge classification stays a cascade.** Stage 1 is a cheap high-recall filter;
+  stage 2 only sees what survived. If you set `R2MCP_MODEL_TIER` alone, both
+  stages land on the same tier and the cascade stops saving anything — set the
+  stage-2 override too if you care about that.
+- **Invalid values fail open, loudly.** A typo (`R2MCP_MODEL_TIER=sonnnet`)
+  falls back to the next source and writes one warning to stderr naming the
+  variable and value — deduped per variable, since stage 1 resolves once per
+  candidate pair. These call sites run inside scheduled jobs, where taking down
+  the nightly pipeline over a typo is worse than using a working default.
 
 ## Wiki compile (SPEC-044)
 

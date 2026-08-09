@@ -82,7 +82,7 @@ describe('ClaudeCodeProvider', () => {
     await p.complete({ model: 'opus', prompt: 'classify this' });
     expect(capturedArgs).toContain('--model');
     const idx = capturedArgs?.indexOf('--model') ?? -1;
-    expect(capturedArgs?.[idx + 1]).toBe('claude-opus-4-7');
+    expect(capturedArgs?.[idx + 1]).toBe('claude-opus-5');
   });
 });
 
