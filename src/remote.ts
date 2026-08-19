@@ -3,15 +3,25 @@
 // remote tool calls emit the same spans/metrics stdio does).
 import './instrumentation.js';
 
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+// express@5 ships no type declarations of its own, and this task's dependency
+// budget is exactly `express` + `jose` (brief 05 "File scope"/"Out of scope"
+// forbid a third package, including `@types/express`). The import is therefore
+// suppressed once, here, and immediately narrowed to the `ExpressApp` interface
+// below — nothing downstream of this line is untyped.
+// @ts-expect-error untyped module: express@5 bundles no type declarations
+import express from 'express';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
+import { mcpAuthMetadataRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { initDb, closeDb } from './db.js';
 import { loadEnvFile, currentScope } from './env.js';
 import { SERVER_VERSION } from './register/version.js';
 import { registerRemoteProfile } from './register/remote-profile.js';
 import { REMOTE_INSTRUCTIONS } from './register/remote-descriptions.js';
+import { createRemoteAuth, type RemoteAuth } from './remote-auth.js';
 
 /**
  * SPEC-059 — the remote entry point: r2mcp's five safe tools over streamable
@@ -21,8 +31,15 @@ import { REMOTE_INSTRUCTIONS } from './register/remote-descriptions.js';
  * route to the six excluded tools, the CLI spawners, the graph rebuild, or
  * node:child_process. tests/remote-profile.test.ts enforces that on every run.
  *
- * Auth is NOT this layer's job — the Cloudflare edge in front of it owns that
- * (SPEC-059 R6). Nothing here inspects tokens.
+ * Auth IS this layer's job (revised by the 2026-08-20 escalation, plan.md Task
+ * 05): the server plays the MCP authorization spec's resource-server role
+ * itself — every unauthenticated `/mcp` request gets a 401 carrying
+ * `WWW-Authenticate: Bearer resource_metadata="…"`, which is the header
+ * claude.ai's connector hard-requires and which Cloudflare Access's Managed
+ * OAuth does not emit (anthropics/claude-ai-mcp#410). The edge still provides
+ * the tunnel/TLS, but the 401 contract no longer depends on it, and the server
+ * is safe even if the tunnel is reached directly. Token *issuance* remains
+ * entirely the external authorization server's job — see src/remote-auth.ts.
  */
 
 // MCP servers and launchd-spawned processes don't inherit shell env, so load
@@ -32,21 +49,30 @@ loadEnvFile(resolve(PROJECT_ROOT, '.env'));
 
 /**
  * R5/AC4 — fail loud, refuse to start. Every one of these has a "helpful"
- * default somewhere in the codebase that is wrong for a public endpoint:
- * R2MCP_SCOPE falls back to 'global' (writes vanish into a never-curated
- * bucket), R2MCP_DATABASE_URL would only fail later on first use, and a
- * missing R2MCP_OPENROUTER_API_KEY silently degrades every recall to
- * full-text forever. Better to not exist than to serve any of those.
+ * default somewhere in the codebase (or in the ecosystem) that is wrong for a
+ * public endpoint: R2MCP_SCOPE falls back to 'global' (writes vanish into a
+ * never-curated bucket), R2MCP_DATABASE_URL would only fail later on first use,
+ * a missing R2MCP_OPENROUTER_API_KEY silently degrades every recall to
+ * full-text forever, and defaulting either OAuth variable would mean shipping a
+ * memory store whose bearer tokens are checked against nothing. Better to not
+ * exist than to serve any of those.
  */
-const REQUIRED_ENV = ['R2MCP_SCOPE', 'R2MCP_DATABASE_URL', 'R2MCP_OPENROUTER_API_KEY'] as const;
+const REQUIRED_ENV = [
+  'R2MCP_SCOPE',
+  'R2MCP_DATABASE_URL',
+  'R2MCP_OPENROUTER_API_KEY',
+  'R2MCP_OAUTH_ISSUER',
+  'R2MCP_OAUTH_AUDIENCE',
+] as const;
 
 for (const name of REQUIRED_ENV) {
   if (!(process.env[name] ?? '').trim()) {
     console.error(
       `[r2mcp-remote] refusing to start: ${name} is not set. ` +
-        'The remote profile requires an explicit scope, database, and embeddings key — ' +
-        'defaulting any of them would silently write to the wrong bucket or serve ' +
-        'degraded (full-text-only) results indefinitely.',
+        'The remote profile requires an explicit scope, database, embeddings key, ' +
+        'OAuth issuer and OAuth audience — defaulting any of them would silently ' +
+        'write to the wrong bucket, serve degraded (full-text-only) results ' +
+        'indefinitely, or expose the memory store with no token verification.',
     );
     process.exit(1);
   }
@@ -56,6 +82,15 @@ for (const name of REQUIRED_ENV) {
 // exactly as src/index.ts does, so every request and /health report the same
 // value.
 const CURRENT_SCOPE = currentScope();
+
+/**
+ * The external authorization server's issuer identifier, and this resource
+ * server's own canonical identifier. Nothing here hardcodes a vendor: any
+ * spec-compliant AS (Auth0 tenant, an Access app that emits the header, …)
+ * plugs in through these two variables alone.
+ */
+const OAUTH_ISSUER = (process.env.R2MCP_OAUTH_ISSUER ?? '').trim();
+const OAUTH_AUDIENCE = (process.env.R2MCP_OAUTH_AUDIENCE ?? '').trim();
 
 const DEFAULT_PORT = 8787;
 // A blank/whitespace-only R2MCP_HTTP_PORT means "not configured", not "port 0":
@@ -74,9 +109,40 @@ if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65535) {
 }
 
 // Loopback only. The published surface is the Cloudflare tunnel, which runs on
-// the same host; binding 0.0.0.0 would put an unauthenticated memory store on
-// the LAN, which is precisely the blast radius this spec is trying to contain.
+// the same host; binding 0.0.0.0 would put a memory store on the LAN, which is
+// precisely the blast radius this spec is trying to contain.
 const HOST = '127.0.0.1';
+
+/* =====================================================================
+ * The slice of express's Application surface this file uses.
+ *
+ * Handlers are typed against node's own IncomingMessage/ServerResponse — which
+ * express's request/response objects extend — because every handler below
+ * writes its reply through sendJson()/the SDK transport, i.e. through the node
+ * API, never through express-only sugar like `res.json()`. That keeps this
+ * shim small enough to be obviously correct while leaving each handler fully
+ * type-checked. Values coming back from the SDK's auth helpers are `any` (the
+ * SDK types them against express, which resolves to `any` here) and so satisfy
+ * these parameter types without a cast.
+ * =================================================================== */
+type ExpressNext = (err?: unknown) => void;
+type ExpressHandler = (req: IncomingMessage, res: ServerResponse, next: ExpressNext) => void;
+type ExpressErrorHandler = (
+  err: unknown,
+  req: IncomingMessage,
+  res: ServerResponse,
+  next: ExpressNext,
+) => void;
+
+interface ExpressApp {
+  (req: IncomingMessage, res: ServerResponse): void;
+  use(handler: ExpressHandler): ExpressApp;
+  use(handler: ExpressErrorHandler): ExpressApp;
+  use(path: string, handler: ExpressHandler): ExpressApp;
+  get(path: string, handler: ExpressHandler): ExpressApp;
+  post(path: string, handler: ExpressHandler): ExpressApp;
+  all(path: string, handler: ExpressHandler): ExpressApp;
+}
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   if (res.headersSent) return;
@@ -100,15 +166,14 @@ function sendJsonRpcError(
 /**
  * Routing path for a request, or `null` if the request target cannot be parsed.
  *
- * Two hazards, both of which used to kill the process with an uncaught
- * ERR_INVALID_URL from inside the createServer callback:
- *   1. The base was built from `req.headers.host`, which is attacker-controlled
- *      and need not be a valid authority — `Host:` (empty, which `??` does not
- *      catch) or `Host: ]` makes `new URL` throw. The base is now a fixed
- *      constant; we only ever route on the path, never on the client's Host.
- *   2. Even with a fixed base some request targets are unparseable — `GET //`
- *      throws ERR_INVALID_URL — so the parse itself is guarded.
- * A ~40-byte unauthenticated request must not be able to take the server down.
+ * Kept from the hand-rolled router (Task 02, round 2) as an explicit guard in
+ * front of express rather than dropped with it: `GET //` is an unparseable
+ * request target, and answering it with the same 400 as before keeps that
+ * regression test honest instead of letting it silently become "some 4xx".
+ * A ~40-byte unauthenticated request must not be able to take the server down,
+ * and the Host header — attacker-controlled and not necessarily a valid
+ * authority — is never consulted: the base is a fixed constant and we route on
+ * the path alone.
  */
 const ROUTING_BASE = 'http://r2mcp.invalid';
 
@@ -137,41 +202,95 @@ async function handleMcpPost(req: IncomingMessage, res: ServerResponse): Promise
   });
 
   await server.connect(transport);
+  // No body-parsing middleware is mounted, so the request stream is untouched
+  // and the transport reads it itself — same as the pre-express handler did.
   await transport.handleRequest(req, res);
 }
 
-const httpServer = createServer((req, res) => {
-  const path = requestPath(req);
-  if (path === null) {
-    sendJsonRpcError(res, 400, -32600, 'Invalid request target');
-    return;
-  }
+/**
+ * Mount order is the contract, not a detail:
+ *   1. unparseable-target guard (400 before anything tries to route),
+ *   2. RFC 9728 protected-resource metadata (+ the RFC 8414 authorization-server
+ *      mirror the SDK adds) — must be reachable unauthenticated, since it is
+ *      literally what a 401 tells the client to go and fetch,
+ *   3. GET /health — stays unauthenticated (liveness probes and the launchd
+ *      health check have no token),
+ *   4. requireBearerAuth on /mcp ONLY, then the MCP handler behind it,
+ *   5. 404 for everything else, then the error handler last.
+ */
+function buildApp(auth: RemoteAuth): ExpressApp {
+  const app = express() as ExpressApp;
 
-  if (path === '/health') {
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      sendJsonRpcError(res, 405, -32000, 'Method not allowed.');
+  const rejectUnparseableTarget: ExpressHandler = (req, res, next) => {
+    if (requestPath(req) === null) {
+      sendJsonRpcError(res, 400, -32600, 'Invalid request target');
       return;
     }
+    next();
+  };
+
+  const health: ExpressHandler = (_req, res) => {
     sendJson(res, 200, { name: 'r2mcp', version: SERVER_VERSION, scope: CURRENT_SCOPE });
-    return;
-  }
+  };
 
-  if (path === '/mcp') {
-    // Stateless mode has no standalone SSE stream to open and no session to
-    // terminate, so GET and DELETE are unsupported here (SDK stateless example).
-    if (req.method !== 'POST') {
-      sendJsonRpcError(res, 405, -32000, 'Method not allowed.');
-      return;
-    }
+  // Stateless mode has no standalone SSE stream to open and no session to
+  // terminate, so GET and DELETE are unsupported on /mcp (SDK stateless
+  // example); /health only answers GET and HEAD.
+  const methodNotAllowed: ExpressHandler = (_req, res) => {
+    sendJsonRpcError(res, 405, -32000, 'Method not allowed.');
+  };
+
+  const mcpPost: ExpressHandler = (req, res) => {
     handleMcpPost(req, res).catch((err) => {
       console.error('[r2mcp-remote] error handling POST /mcp:', err);
       sendJsonRpcError(res, 500, -32603, 'Internal server error');
     });
-    return;
-  }
+  };
 
-  sendJsonRpcError(res, 404, -32601, 'Not found');
-});
+  const notFound: ExpressHandler = (_req, res) => {
+    sendJsonRpcError(res, 404, -32601, 'Not found');
+  };
+
+  const onError: ExpressErrorHandler = (err, _req, res, _next) => {
+    console.error('[r2mcp-remote] unhandled request error:', err);
+    sendJsonRpcError(res, 500, -32603, 'Internal server error');
+  };
+
+  app.use(rejectUnparseableTarget);
+
+  // The SDK owns the shape of both metadata documents. `authorization_servers`
+  // is populated from the AS's own published `issuer`, so pointing
+  // R2MCP_OAUTH_ISSUER at a different, spec-compliant AS is the entire
+  // migration.
+  app.use(
+    mcpAuthMetadataRouter({
+      oauthMetadata: auth.oauthMetadata,
+      resourceServerUrl: auth.resourceServerUrl,
+      resourceName: 'r2mcp',
+    }),
+  );
+
+  app.get('/health', health);
+  app.all('/health', methodNotAllowed);
+
+  // The 401 + `WWW-Authenticate: Bearer …, resource_metadata="…"` contract is
+  // the SDK's, not ours — see bearerAuth.js's buildWwwAuthHeader. We hand it
+  // the resource-metadata URL and a verifier and set no auth headers by hand.
+  app.use(
+    '/mcp',
+    requireBearerAuth({
+      verifier: auth.verifier,
+      resourceMetadataUrl: auth.resourceMetadataUrl,
+    }),
+  );
+  app.post('/mcp', mcpPost);
+  app.all('/mcp', methodNotAllowed);
+
+  app.use(notFound);
+  app.use(onError);
+
+  return app;
+}
 
 /**
  * HTTP lifecycle, NOT stdio lifecycle: wireParentDisconnectHandlers() from
@@ -179,14 +298,18 @@ const httpServer = createServer((req, res) => {
  * exiting on stdin EOF would kill a launchd-managed service the moment its
  * stdin closed. Signals are the only shutdown path.
  */
+let httpServer: Server | null = null;
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   console.error(`[r2mcp-remote] ${signal} received — shutting down`);
-  // Don't let a lingering keep-alive connection hold the process open.
-  httpServer.closeAllConnections();
-  await new Promise<void>((done) => httpServer.close(() => done()));
+  const server = httpServer;
+  if (server) {
+    // Don't let a lingering keep-alive connection hold the process open.
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  }
   await closeDb();
   process.exit(0);
 }
@@ -195,12 +318,34 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
 
 async function main(): Promise<void> {
+  // Resource-server auth is resolved FIRST: a server that cannot verify tokens
+  // must never open a socket, and this is the cheaper of the two startup
+  // dependencies to fail on (no DB pool to unwind).
+  let auth: RemoteAuth;
+  try {
+    auth = await createRemoteAuth({ issuer: OAUTH_ISSUER, audience: OAUTH_AUDIENCE });
+  } catch (err) {
+    console.error(
+      `[r2mcp-remote] refusing to start: could not initialise OAuth resource-server auth ` +
+        `(R2MCP_OAUTH_ISSUER=${JSON.stringify(OAUTH_ISSUER)}, ` +
+        `R2MCP_OAUTH_AUDIENCE=${JSON.stringify(OAUTH_AUDIENCE)}): ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+    process.exit(1);
+  }
+
   await initDb();
   console.error(`[r2mcp-remote] project scope: ${CURRENT_SCOPE}`);
-  await new Promise<void>((listening) => httpServer.listen(PORT, HOST, listening));
+  console.error(
+    `[r2mcp-remote] auth: bearer tokens issued by ${OAUTH_ISSUER}, audience ${OAUTH_AUDIENCE}`,
+  );
+
+  const server = createServer(buildApp(auth));
+  httpServer = server;
+  await new Promise<void>((listening) => server.listen(PORT, HOST, listening));
   // Report the port the OS actually gave us, not the requested constant — with
   // PORT=0 (ephemeral) the requested value tells an operator nothing.
-  const address = httpServer.address();
+  const address = server.address();
   const boundPort = address && typeof address === 'object' ? address.port : PORT;
   console.error(
     `[r2mcp-remote] r2mcp ${SERVER_VERSION} on http://${HOST}:${boundPort} (POST /mcp, GET /health)`,

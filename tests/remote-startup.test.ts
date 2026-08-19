@@ -21,10 +21,12 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createServer, connect as netConnect } from 'node:net';
+import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { generateKeyPair, exportJWK, SignJWT, type CryptoKey } from 'jose';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { setupTestDb, teardownTestDb } from './setup.js';
@@ -33,6 +35,13 @@ import { pickTestUrl } from './test-db-guard.js';
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const REMOTE_ENTRY = resolve(REPO_ROOT, 'dist/remote.js');
 const REMOTE_TEST_SCOPE = 'r2mcp-remote-startup-test';
+/**
+ * SPEC-059 Task 05 — this resource server's canonical identifier, i.e. what
+ * `R2MCP_OAUTH_AUDIENCE` is set to for every spawn below and what every test
+ * token's `aud` claim must therefore carry. The value is arbitrary (nothing
+ * dials it); only issuer/audience *agreement* matters here.
+ */
+const REMOTE_TEST_AUDIENCE = 'https://r2mcp-remote-startup-test.invalid/';
 
 let isolatedProjectRoot: string;
 /** Short-lived children (the fail-loud spawns) — reaped after EVERY test. */
@@ -55,14 +64,97 @@ function killIfRunning(child: ChildProcessWithoutNullStreams): void {
   if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
 }
 
+/* =====================================================================
+ * SPEC-059 Task 05 — local authorization server.
+ *
+ * MECHANICALLY FORCED by the new env contract, not a change of intent: since
+ * Task 05, dist/remote.js refuses to start without R2MCP_OAUTH_ISSUER /
+ * R2MCP_OAUTH_AUDIENCE and resolves the issuer's authorization-server metadata
+ * (and its jwks_uri) at startup. Every spawn in this file that is *supposed to
+ * boot* therefore needs a reachable issuer, and the two over-the-wire /mcp
+ * tests need a token that verifies against it. This is a real 127.0.0.1 socket
+ * for the same reason tests/remote-auth.test.ts uses one — the startup fetch is
+ * a genuine HTTP request — and it never talks to a real authorization server.
+ *
+ * No assertion in this file was changed: the AC1 tools/list and R8 instructions
+ * tests assert exactly what they asserted before, they just now present the
+ * bearer token the endpoint requires.
+ * =================================================================== */
+interface FakeIssuer {
+  issuerUrl: string;
+  kid: string;
+  privateKey: CryptoKey;
+  close: () => Promise<void>;
+}
+
+let fakeIssuer: FakeIssuer;
+
+async function startFakeIssuer(): Promise<FakeIssuer> {
+  const { publicKey, privateKey } = await generateKeyPair('RS256', { extractable: true });
+  const kid = 'r2mcp-remote-startup-test-key';
+  const publicJwk = await exportJWK(publicKey);
+  const jwks = { keys: [{ ...publicJwk, kid, alg: 'RS256', use: 'sig' }] };
+
+  let issuerUrl = '';
+  const server: HttpServer = createHttpServer((req, res) => {
+    const path = (req.url ?? '').split('?')[0];
+    if (path === '/.well-known/oauth-authorization-server') {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(
+        JSON.stringify({
+          issuer: issuerUrl,
+          jwks_uri: `${issuerUrl}/.well-known/jwks.json`,
+          authorization_endpoint: `${issuerUrl}/authorize`,
+          token_endpoint: `${issuerUrl}/token`,
+          response_types_supported: ['code'],
+        }),
+      );
+      return;
+    }
+    if (path === '/.well-known/jwks.json') {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(jwks));
+      return;
+    }
+    res
+      .writeHead(404, { 'Content-Type': 'application/json' })
+      .end(JSON.stringify({ error: 'not_found' }));
+  });
+
+  await new Promise<void>((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
+  const address = server.address();
+  const port = address && typeof address === 'object' ? address.port : 0;
+  issuerUrl = `http://127.0.0.1:${port}`;
+
+  return {
+    issuerUrl,
+    kid,
+    privateKey,
+    close: () => new Promise<void>((res) => server.close(() => res())),
+  };
+}
+
+/** A valid, unexpired access token for REMOTE_TEST_AUDIENCE. */
+async function signToken(issuer: FakeIssuer): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return new SignJWT({})
+    .setProtectedHeader({ alg: 'RS256', kid: issuer.kid })
+    .setIssuedAt(now)
+    .setIssuer(issuer.issuerUrl)
+    .setAudience(REMOTE_TEST_AUDIENCE)
+    .setSubject('dustin-test-user')
+    .setExpirationTime(now + 3600)
+    .sign(issuer.privateKey);
+}
+
 beforeAll(async () => {
   await setupTestDb();
   isolatedProjectRoot = mkdtempSync(join(tmpdir(), 'r2mcp-remote-startup-'));
+  fakeIssuer = await startFakeIssuer();
 });
 
 afterAll(async () => {
   for (const child of longLivedChildren) killIfRunning(child);
   longLivedChildren = [];
+  await fakeIssuer.close();
   await teardownTestDb();
   rmSync(isolatedProjectRoot, { recursive: true, force: true });
 });
@@ -106,6 +198,9 @@ function validEnvBase(): Record<string, string> {
     R2MCP_SCOPE: REMOTE_TEST_SCOPE,
     R2MCP_DATABASE_URL: pickTestUrl(),
     R2MCP_OPENROUTER_API_KEY: 'sk-test-placeholder-not-a-real-key',
+    // Task 05 additions — see the startFakeIssuer() block above.
+    R2MCP_OAUTH_ISSUER: fakeIssuer.issuerUrl,
+    R2MCP_OAUTH_AUDIENCE: REMOTE_TEST_AUDIENCE,
     PROJECT_ROOT: isolatedProjectRoot,
   };
 }
@@ -248,9 +343,15 @@ describe('AC1 (HTTP) / R3 / R5 — dist/remote.js boots for real and serves stre
   let port: number;
   let child: ChildProcessWithoutNullStreams;
   let baseUrl: URL;
+  /**
+   * Task 05: /mcp is now behind requireBearerAuth, so the two MCP-client tests
+   * below present a token. /health is untouched and stays token-free.
+   */
+  let authHeaders: Record<string, string>;
 
   beforeAll(async () => {
     port = await getFreePort();
+    authHeaders = { Authorization: `Bearer ${await signToken(fakeIssuer)}` };
     const env = baseEnv({ ...validEnvBase(), R2MCP_HTTP_PORT: String(port) });
     child = spawn('node', [REMOTE_ENTRY], { cwd: REPO_ROOT, env });
     // Long-lived: shared by every test in this describe block, so it must
@@ -277,7 +378,9 @@ describe('AC1 (HTTP) / R3 / R5 — dist/remote.js boots for real and serves stre
   });
 
   it('AC1: POST /mcp initialize + tools/list returns exactly recall, remember, search, stats, reject over real streamable HTTP', async () => {
-    const transport = new StreamableHTTPClientTransport(new URL('mcp', baseUrl));
+    const transport = new StreamableHTTPClientTransport(new URL('mcp', baseUrl), {
+      requestInit: { headers: authHeaders },
+    });
     const client = new Client({ name: 'http-listing-test-client', version: '0.0.0' });
     await client.connect(transport);
     try {
@@ -290,7 +393,9 @@ describe('AC1 (HTTP) / R3 / R5 — dist/remote.js boots for real and serves stre
 
   it('R8: the server advertises REMOTE_INSTRUCTIONS as its MCP initialize instructions', async () => {
     const { REMOTE_INSTRUCTIONS } = await import('../src/register/remote-descriptions.js');
-    const transport = new StreamableHTTPClientTransport(new URL('mcp', baseUrl));
+    const transport = new StreamableHTTPClientTransport(new URL('mcp', baseUrl), {
+      requestInit: { headers: authHeaders },
+    });
     const client = new Client({ name: 'http-instructions-test-client', version: '0.0.0' });
     await client.connect(transport);
     try {
