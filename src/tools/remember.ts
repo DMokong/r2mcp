@@ -2,7 +2,6 @@ import { getPool } from '../db.js';
 import { fingerprint } from '../fingerprint.js';
 import { embedText, embeddingWarning } from '../embeddings.js';
 import { currentScope } from '../env.js';
-import { triggerGraphRebuild } from '../graph-rebuild.js';
 import pgvector from 'pgvector';
 
 const { toSql } = pgvector;
@@ -42,9 +41,15 @@ export interface RememberResult {
   warnings?: string[];
 }
 
+/**
+ * SPEC-059: this used to take a `projectRoot` and fire a graph rebuild inline
+ * after each successful write. That side effect now lives in the stdio
+ * registration layer (src/register/remember.ts) as an injected `afterWrite`
+ * callback, so the remote profile can compose the same tool without any route
+ * to node:child_process.
+ */
 export async function remember(
   input: RememberInput,
-  projectRoot?: string,
   scope: string = currentScope(),
 ): Promise<RememberResult> {
   const { operation, tier, content, metadata, target_id } = input;
@@ -100,10 +105,6 @@ export async function remember(
       ],
     );
 
-    if (projectRoot) {
-      triggerGraphRebuild(projectRoot);
-    }
-
     const warning = embeddingWarning(embedding);
     return {
       operation,
@@ -155,10 +156,6 @@ export async function remember(
       return { operation: 'UPDATE', message: `No memory found with id ${target_id}.` };
     }
 
-    if (projectRoot) {
-      triggerGraphRebuild(projectRoot);
-    }
-
     const warning = embeddingWarning(embedding);
     return {
       operation: 'UPDATE',
@@ -207,10 +204,6 @@ export async function remember(
           scope,
         ],
       );
-    }
-
-    if (projectRoot) {
-      triggerGraphRebuild(projectRoot);
     }
 
     return {

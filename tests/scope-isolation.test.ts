@@ -39,7 +39,6 @@ function withScope<T>(scope: string, fn: () => Promise<T>): Promise<T> {
 async function addIn(scope: string, content: string, type = 'preference') {
   return remember(
     { operation: 'ADD', tier: 'preferences', content, metadata: { type: type as never } },
-    undefined,
     scope,
   );
 }

@@ -4,8 +4,11 @@
 //  Absence here means a typo or missing instrumentation would be invisible."
 //
 // Two-layer guard:
-//   1. Source-level: `withToolSpan('extract_entities', ...)` is called in
-//      src/index.ts (a missing/renamed wire-up is caught at static lint).
+//   1. Source-level: `withToolSpan('extract_entities', ...)` is called in the
+//      tool's registration module (a missing/renamed wire-up is caught at
+//      static lint). SPEC-059 moved that registration out of src/index.ts into
+//      src/register/extract-entities.ts; the guard is unchanged, only its
+//      source path moved.
 //   2. Behavioral: `withToolSpan(name, ...)` actually opens a span whose
 //      name is `memory.${name}` (telemetry.ts:50). We hijack the OTel tracer
 //      to capture the span name and assert it directly.
@@ -15,12 +18,19 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('SPEC-046 R9 extract_entities OTel span', () => {
-  it('source wires withToolSpan("extract_entities", ...) in index.ts', () => {
-    const indexPath = resolve(__dirname, '..', '..', 'src', 'index.ts');
-    const src = readFileSync(indexPath, 'utf8');
+  it('source wires withToolSpan("extract_entities", ...) in its register module', () => {
+    const registerPath = resolve(
+      __dirname,
+      '..',
+      '..',
+      'src',
+      'register',
+      'extract-entities.ts',
+    );
+    const src = readFileSync(registerPath, 'utf8');
     // Catches typos, accidental rename, or removed instrumentation. The
     // single-quoted string literal is the canonical shape used by every other
-    // tool registration in this file (remember, recall, classify, ...).
+    // tool registration module (remember, recall, classify, ...).
     // Regex tolerates prettier's whitespace choices (the call args may be
     // wrapped across lines).
     expect(src).toMatch(/withToolSpan\(\s*'extract_entities'/);
