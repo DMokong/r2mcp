@@ -186,6 +186,21 @@ export async function createRemoteAuth(options: RemoteAuthOptions): Promise<Remo
   // Both literal spellings of the issuer are acceptable in a token's `iss`.
   const acceptedIssuers = Array.from(new Set([options.issuer, metadata.issuer, issuerUrl.href]));
 
+  // Same treatment for `aud`, and for the same reason. The protected-resource
+  // document publishes `resourceServerUrl.href` (SDK router.js: `resource:
+  // options.resourceServerUrl.href`), and `new URL(...).href` appends a trailing
+  // slash to a root-path URL — so an operator who writes R2MCP_OAUTH_AUDIENCE
+  // without one makes the server advertise `https://host/` while a raw
+  // exact-match would accept only `https://host`. A client doing the RFC 8707
+  // round trip (read `resource`, ask the AS for a token bound to it) would then
+  // be 401'd by the very server that published the identifier — silently, since
+  // boot, /health and the metadata document all stay green.
+  //
+  // RFC 3986 §6.2.3 makes the two forms the same resource, so accept both
+  // literal spellings and nothing else: this is the same identifier written two
+  // ways, NOT a widened audience.
+  const acceptedAudiences = Array.from(new Set([options.audience, resourceServerUrl.href]));
+
   const verifier: OAuthTokenVerifier = {
     async verifyAccessToken(token: string): Promise<AuthInfo> {
       let payload: JWTPayload;
@@ -195,7 +210,7 @@ export async function createRemoteAuth(options: RemoteAuthOptions): Promise<Remo
         // JWSSignatureVerificationFailed as appropriate.
         ({ payload } = await jwtVerify(token, jwks, {
           issuer: acceptedIssuers,
-          audience: options.audience,
+          audience: acceptedAudiences,
         }));
       } catch (err) {
         // MUST be the SDK's own InvalidTokenError: `requireBearerAuth` maps

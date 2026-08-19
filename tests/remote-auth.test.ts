@@ -270,6 +270,11 @@ const MCP_POST_HEADERS = {
   Accept: 'application/json, text/event-stream',
 };
 
+/** RFC 3986 §6.2.3: for an http(s) URL the empty path and "/" are equivalent. */
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
 beforeAll(async () => {
   isolatedProjectRoot = mkdtempSync(join(tmpdir(), 'r2mcp-remote-auth-'));
 });
@@ -423,6 +428,65 @@ describe('remote-auth: resource-server middleware on POST /mcp (R6, AC7, escalat
     const body = (await res.json()) as { authorization_servers?: string[]; resource?: string };
     expect(Array.isArray(body.authorization_servers)).toBe(true);
     expect(body.authorization_servers).toContain(issuer.issuerUrl);
+    // The document must also name THIS resource server: `resource` is the
+    // identifier a client echoes back as its RFC 8707 resource indicator, and
+    // the brief requires it to be R2MCP_OAUTH_AUDIENCE. Compared slash-
+    // insensitively because RFC 3986 §6.2.3 makes the empty path and "/"
+    // equivalent and the SDK publishes the URL-normalised `.href` form.
+    expect(stripTrailingSlash(body.resource ?? '')).toBe(stripTrailingSlash(audience));
+  });
+
+  it('RT2: the `resource` identifier published in the metadata is itself accepted as a token `aud` (RFC 8707 round trip)', async () => {
+    // Regression guard for the round-1 review finding. A spec-compliant client
+    // reads `resource` out of the protected-resource document and asks the AS
+    // for a token bound to that exact value; the server that published the
+    // identifier must then accept it. The SDK publishes
+    // `new URL(R2MCP_OAUTH_AUDIENCE).href`, which appends a trailing slash to a
+    // root-path URL — so whenever the operator writes the audience without one
+    // (as this suite deliberately does: `audience` has no trailing slash), the
+    // published identifier and the raw env spelling differ, and a verifier that
+    // exact-matches only the raw spelling 401s the very flow it advertised.
+    const metaRes = await fetch(new URL('.well-known/oauth-protected-resource', baseUrl));
+    expect(metaRes.status).toBe(200);
+    const { resource } = (await metaRes.json()) as { resource?: string };
+    expect(typeof resource).toBe('string');
+
+    const publishedAudToken = await signToken(issuer, { aud: resource! });
+    const transport = new StreamableHTTPClientTransport(new URL('mcp', baseUrl), {
+      requestInit: { headers: { Authorization: `Bearer ${publishedAudToken}` } },
+    });
+    const client = new Client({ name: 'rt2-resource-roundtrip-client', version: '0.0.0' });
+    await client.connect(transport);
+    try {
+      const marker = `rt2-resource-roundtrip-${Date.now()}`;
+      const result = await client.callTool({
+        name: 'remember',
+        arguments: {
+          operation: 'ADD',
+          tier: 'preferences',
+          content: marker,
+          metadata: { type: 'preference', topics: ['remote-auth-rt2-roundtrip'] },
+        },
+      });
+      const textContent = (result.content as Array<{ type: string; text?: string }>).find(
+        (c) => c.type === 'text',
+      );
+      const parsed = JSON.parse(textContent!.text!) as { id?: string };
+      const row = await pool.query('SELECT content FROM memories WHERE id = $1', [parsed.id]);
+      expect(row.rows).toHaveLength(1);
+      expect(row.rows[0].content).toBe(marker);
+    } finally {
+      await client.close();
+    }
+
+    // ...and the raw R2MCP_OAUTH_AUDIENCE spelling keeps working too. Both
+    // literal spellings of ONE identifier are accepted — not a wildcard.
+    const rawAudRes = await fetch(new URL('mcp', baseUrl), {
+      method: 'POST',
+      headers: { ...MCP_POST_HEADERS, Authorization: `Bearer ${validToken}` },
+      body: JSON.stringify(INITIALIZE_BODY),
+    });
+    expect(rawAudRes.status).toBe(200);
   });
 
   it('RT3: POST /mcp with a syntactically garbage token is rejected 401 and the tool call never executes', async () => {
