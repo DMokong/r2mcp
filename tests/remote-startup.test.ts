@@ -20,7 +20,7 @@
 // remote.ts's own `.env` load can never pick that file up either.
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { createServer } from 'node:net';
+import { createServer, connect as netConnect } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -150,6 +150,47 @@ function spawnRemoteUntilExit(env: NodeJS.ProcessEnv, timeoutMs = 8000): Promise
   });
 }
 
+/**
+ * Sends a hand-written HTTP/1.1 request over a raw TCP socket and returns the
+ * bytes that come back ('' if the peer closed without answering — which is
+ * exactly what a crashed server looks like from the client side).
+ *
+ * `fetch` cannot reach these code paths: it always emits a well-formed Host
+ * header and a normalized request target, so the malformed-Host / unparseable
+ * request-target crash found in round 1 was invisible to a fetch-based probe.
+ */
+function rawRequest(port: number, raw: string, timeoutMs = 4000): Promise<string> {
+  return new Promise((resolveRaw, reject) => {
+    const socket = netConnect({ host: '127.0.0.1', port });
+    let data = '';
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolveRaw(data);
+    }, timeoutMs);
+    socket.on('connect', () => socket.write(raw));
+    socket.on('data', (chunk) => {
+      data += chunk.toString();
+    });
+    socket.on('close', () => {
+      clearTimeout(timer);
+      resolveRaw(data);
+    });
+    socket.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+/** True if 127.0.0.1:port can be bound right now (used to skip, not to guess). */
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolveFree) => {
+    const srv = createServer();
+    srv.once('error', () => resolveFree(false));
+    srv.listen(port, '127.0.0.1', () => srv.close(() => resolveFree(true)));
+  });
+}
+
 async function waitForHealth(
   port: number,
   timeoutMs: number,
@@ -264,6 +305,51 @@ describe('AC1 (HTTP) / R3 / R5 — dist/remote.js boots for real and serves stre
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
+  // Round-2 regression tests for the adversarial reviewer's F1: an empty or
+  // syntactically invalid Host header used to build the URL base and killed the
+  // process with an uncaught ERR_INVALID_URL — a ~40-byte unauthenticated
+  // request could take the whole server down. Each test asserts BOTH that a
+  // response comes back AND that the process is still alive and serving
+  // afterwards (a crash shows up as an empty reply plus a dead child).
+  it('F1: an empty Host header gets an HTTP response and does not kill the process', async () => {
+    const reply = await rawRequest(
+      port,
+      'GET /health HTTP/1.1\r\nHost:\r\nConnection: close\r\n\r\n',
+    );
+    expect(reply).toMatch(/^HTTP\/1\.1 \d{3}/);
+    expect(child.exitCode).toBeNull();
+    expect(child.signalCode).toBeNull();
+    // Still serving normal traffic, i.e. the request handler survived intact.
+    const body = await waitForHealth(port, 2000);
+    expect(body.name).toBe('r2mcp');
+  });
+
+  it('F1: a syntactically invalid Host header (`Host: ]`) gets an HTTP response and does not kill the process', async () => {
+    const reply = await rawRequest(
+      port,
+      'GET /health HTTP/1.1\r\nHost: ]\r\nConnection: close\r\n\r\n',
+    );
+    expect(reply).toMatch(/^HTTP\/1\.1 \d{3}/);
+    expect(child.exitCode).toBeNull();
+    expect(child.signalCode).toBeNull();
+    const body = await waitForHealth(port, 2000);
+    expect(body.name).toBe('r2mcp');
+  });
+
+  it('F1: an unparseable request target (`GET //`) gets a 400 and does not kill the process', async () => {
+    // `new URL('//', 'http://<any fixed base>')` throws ERR_INVALID_URL, so a
+    // constant base alone is not enough — the parse itself must be guarded.
+    const reply = await rawRequest(
+      port,
+      'GET // HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n',
+    );
+    expect(reply).toMatch(/^HTTP\/1\.1 400/);
+    expect(child.exitCode).toBeNull();
+    expect(child.signalCode).toBeNull();
+    const body = await waitForHealth(port, 2000);
+    expect(body.name).toBe('r2mcp');
+  });
+
   // Declared LAST in this describe block — it terminates the shared server.
   it('R3: SIGTERM triggers a clean process exit (no stdin/parent-disconnect handling, no hang)', async () => {
     child.kill('SIGTERM');
@@ -276,4 +362,89 @@ describe('AC1 (HTTP) / R3 / R5 — dist/remote.js boots for real and serves stre
     });
     expect(exited).toBe(true);
   });
+});
+
+/**
+ * Round-2 regression tests for the adversarial reviewer's F3: R2MCP_HTTP_PORT=''
+ * used to slip through `??`, and Number('') === 0 cleared the range check, so a
+ * blank var in a launchd plist or .env silently bound a random ephemeral port —
+ * and the banner printed the requested constant, so the real port was not even
+ * discoverable from the log.
+ */
+describe('R2MCP_HTTP_PORT resolution — deterministic or fail-loud, never silently random', () => {
+  /** Spawns dist/remote.js and resolves with the port its startup banner reports. */
+  function spawnRemoteUntilBanner(
+    env: NodeJS.ProcessEnv,
+    timeoutMs = 10000,
+  ): Promise<{ child: ChildProcessWithoutNullStreams; bannerPort: number }> {
+    return new Promise((resolveBanner, reject) => {
+      const child = spawn('node', [REMOTE_ENTRY], { cwd: REPO_ROOT, env });
+      longLivedChildren.push(child); // safety net; each test also kills its own
+      let stderr = '';
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(
+          new Error(
+            `dist/remote.js printed no startup banner within ${timeoutMs}ms — stderr=${JSON.stringify(stderr)}`,
+          ),
+        );
+      }, timeoutMs);
+      child.stderr.on('data', (d) => {
+        stderr += d.toString();
+        const match = /on http:\/\/127\.0\.0\.1:(\d+) /.exec(stderr);
+        if (match) {
+          clearTimeout(timer);
+          resolveBanner({ child, bannerPort: Number(match[1]) });
+        }
+      });
+      child.on('exit', (code) => {
+        clearTimeout(timer);
+        reject(
+          new Error(`dist/remote.js exited (code ${code}) before listening — stderr=${JSON.stringify(stderr)}`),
+        );
+      });
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  }
+
+  it('F3: a non-numeric R2MCP_HTTP_PORT fails loud and names the variable', async () => {
+    const env = baseEnv({ ...validEnvBase(), R2MCP_HTTP_PORT: 'not-a-port' });
+    const result = await spawnRemoteUntilExit(env);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('R2MCP_HTTP_PORT');
+  });
+
+  it('F3: an empty R2MCP_HTTP_PORT resolves to the documented default 8787, not a random ephemeral port', async (ctx) => {
+    if (!(await isPortFree(8787))) {
+      ctx.skip(
+        '127.0.0.1:8787 is already in use on this machine (likely the deployed remote server), ' +
+          'so the default-port binding cannot be observed here.',
+      );
+    }
+    const env = baseEnv({ ...validEnvBase(), R2MCP_HTTP_PORT: '' });
+    const { child, bannerPort } = await spawnRemoteUntilBanner(env);
+    try {
+      expect(bannerPort).toBe(8787);
+      const body = await waitForHealth(8787, 4000);
+      expect(body.name).toBe('r2mcp');
+    } finally {
+      killIfRunning(child);
+    }
+  }, 20000);
+
+  it('F3: with R2MCP_HTTP_PORT=0 the banner reports the ACTUAL bound port, not the requested 0', async () => {
+    const env = baseEnv({ ...validEnvBase(), R2MCP_HTTP_PORT: '0' });
+    const { child, bannerPort } = await spawnRemoteUntilBanner(env);
+    try {
+      expect(bannerPort).toBeGreaterThan(0);
+      // The banner is only useful if it is TRUE — the reported port must serve.
+      const body = await waitForHealth(bannerPort, 4000);
+      expect(body.name).toBe('r2mcp');
+    } finally {
+      killIfRunning(child);
+    }
+  }, 20000);
 });

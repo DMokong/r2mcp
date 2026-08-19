@@ -58,7 +58,13 @@ for (const name of REQUIRED_ENV) {
 const CURRENT_SCOPE = currentScope();
 
 const DEFAULT_PORT = 8787;
-const PORT = Number(process.env.R2MCP_HTTP_PORT ?? DEFAULT_PORT);
+// A blank/whitespace-only R2MCP_HTTP_PORT means "not configured", not "port 0":
+// `??` alone would pass '' through, Number('') is 0, and listen(0) would bind a
+// random ephemeral port that nothing could find again. A blank line in a
+// launchd plist or .env is the realistic trigger, so treat it as unset and take
+// the documented default — deterministic, never silently random.
+const RAW_PORT = (process.env.R2MCP_HTTP_PORT ?? '').trim();
+const PORT = RAW_PORT === '' ? DEFAULT_PORT : Number(RAW_PORT);
 if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65535) {
   console.error(
     `[r2mcp-remote] refusing to start: R2MCP_HTTP_PORT is not a valid port ` +
@@ -91,6 +97,29 @@ function sendJsonRpcError(
   sendJson(res, status, { jsonrpc: '2.0', error: { code, message }, id: null });
 }
 
+/**
+ * Routing path for a request, or `null` if the request target cannot be parsed.
+ *
+ * Two hazards, both of which used to kill the process with an uncaught
+ * ERR_INVALID_URL from inside the createServer callback:
+ *   1. The base was built from `req.headers.host`, which is attacker-controlled
+ *      and need not be a valid authority — `Host:` (empty, which `??` does not
+ *      catch) or `Host: ]` makes `new URL` throw. The base is now a fixed
+ *      constant; we only ever route on the path, never on the client's Host.
+ *   2. Even with a fixed base some request targets are unparseable — `GET //`
+ *      throws ERR_INVALID_URL — so the parse itself is guarded.
+ * A ~40-byte unauthenticated request must not be able to take the server down.
+ */
+const ROUTING_BASE = 'http://r2mcp.invalid';
+
+function requestPath(req: IncomingMessage): string | null {
+  try {
+    return new URL(req.url ?? '/', ROUTING_BASE).pathname;
+  } catch {
+    return null;
+  }
+}
+
 async function handleMcpPost(req: IncomingMessage, res: ServerResponse): Promise<void> {
   // Stateless mode (sessionIdGenerator: undefined) means a fresh McpServer +
   // transport per request: no session store, no cross-request state, and no
@@ -112,7 +141,11 @@ async function handleMcpPost(req: IncomingMessage, res: ServerResponse): Promise
 }
 
 const httpServer = createServer((req, res) => {
-  const path = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`).pathname;
+  const path = requestPath(req);
+  if (path === null) {
+    sendJsonRpcError(res, 400, -32600, 'Invalid request target');
+    return;
+  }
 
   if (path === '/health') {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -165,8 +198,12 @@ async function main(): Promise<void> {
   await initDb();
   console.error(`[r2mcp-remote] project scope: ${CURRENT_SCOPE}`);
   await new Promise<void>((listening) => httpServer.listen(PORT, HOST, listening));
+  // Report the port the OS actually gave us, not the requested constant — with
+  // PORT=0 (ephemeral) the requested value tells an operator nothing.
+  const address = httpServer.address();
+  const boundPort = address && typeof address === 'object' ? address.port : PORT;
   console.error(
-    `[r2mcp-remote] r2mcp ${SERVER_VERSION} on http://${HOST}:${PORT} (POST /mcp, GET /health)`,
+    `[r2mcp-remote] r2mcp ${SERVER_VERSION} on http://${HOST}:${boundPort} (POST /mcp, GET /health)`,
   );
 }
 
