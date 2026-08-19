@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsc && rm -rf dist/migrations && cp -R src/migrations dist/migrations",
     "dev": "tsx src/index.ts",
+    "dev:remote": "tsx src/remote.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "setup": "tsx src/cli/setup.ts",
