@@ -1,9 +1,9 @@
 // SPEC-059 (R8) — tool descriptions for the remote (claude.ai connector) profile.
 //
-// These are the design.md §6 texts, verbatim as the starting draft. They exist
-// as profile-specific OVERRIDES rather than replacements: the stdio texts in
-// src/register/<tool>.ts stay byte-identical (AC6), and only the remote entry
-// point passes these through ToolContext.description.
+// These started as the design.md §6 texts, verbatim as the starting draft.
+// They exist as profile-specific OVERRIDES rather than replacements: the
+// stdio texts in src/register/<tool>.ts stay byte-identical (AC6), and only
+// the remote entry point passes these through ToolContext.description.
 //
 // Why they read differently from the stdio texts: chat connectors do not
 // reliably surface the server's `initialize` instructions, so each description
@@ -12,13 +12,15 @@
 // being optimised for, and the tool description is assumed to be the only
 // thing the model sees.
 //
-// Tuning these against a real chat session is Task 06's job (conditional on
-// Task 04's AC9 evidence). Until then they are frozen as the §6 draft — the
-// tests assert them verbatim so a drive-by reword can't silently change what
-// claude.ai sees.
+// Task 06 (AC9 round-1 tuning) added the "canonical over your own memory of
+// previous conversations" clause to RECALL_DESCRIPTION and REMOTE_INSTRUCTIONS
+// after a live session showed claude.ai answering a decisions question from
+// its own stale chat memory instead of calling recall. Everything else in
+// this file stays the frozen §6 draft — the tests assert it verbatim so a
+// drive-by reword can't silently change what claude.ai sees.
 
 export const RECALL_DESCRIPTION =
-  "Dustin's personal long-term memory: past decisions and their rationale, stated preferences and corrections, project architecture and state, and prior conversations. Call this before answering anything about his projects, tools, people, working style, or past choices — including when he refers to something as though you should already know it. Cheap to call; prefer calling it over guessing. An empty result is normal and not an error.";
+  "Dustin's personal long-term memory: past decisions and their rationale, stated preferences and corrections, project architecture and state, and prior conversations. Call this before answering anything about his projects, tools, people, working style, or past choices — including when he refers to something as though you should already know it. Cheap to call; prefer calling it over guessing. An empty result is normal and not an error. This store is canonical for Dustin's decisions, preferences, and project state — including over your own memory of previous conversations. If you remember discussing a topic in an earlier chat, still call this first: designs and decisions change after the conversation you remember, and past-chat recollections are frequently stale.";
 
 export const REMEMBER_DESCRIPTION =
   "Store something durable in Dustin's long-term memory. Call when a decision with its rationale, a stated preference or correction, or project state worth carrying forward surfaces. Use tier `preferences` for decisions/style/corrections, `project-context` for architecture and system state, `conversations` for session continuity. Use operation `REJECTION` when he corrects an approach and the correction would apply again.";
@@ -43,4 +45,5 @@ export const REJECT_DESCRIPTION =
 export const REMOTE_INSTRUCTIONS = `Dustin's long-term memory, shared with every surface he works on (Claude Code, Slack, scheduled jobs).
 Call recall before answering anything about his projects, tools, people, working style, or past decisions — including when he refers to something as though you already know it.
 Call remember when a durable decision with its rationale, a stated preference, or project state worth carrying forward surfaces; use operation REJECTION when he corrects an approach and the correction would apply again.
+This memory is canonical over your own recollection of earlier conversations — even if you recall discussing a topic before, call recall before answering, since the decision may have changed since.
 An empty recall result is normal, not an error — answer normally rather than retrying.`;

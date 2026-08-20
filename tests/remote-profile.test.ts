@@ -239,9 +239,11 @@ describe('AC2 — module-graph audit for src/remote.ts (R2/R4)', () => {
 // design.md §6 verbatim texts (Task 02 "Required content": remote-descriptions.ts
 // must ship these as the starting draft, one exported const per tool). Copied
 // byte-for-byte from docs/fable-streams/2026-08-20-r2mcp-remote-deployment/design.md
-// lines 107-113 (verified via `od -c` against the source doc).
+// lines 107-113 (verified via `od -c` against the source doc), EXCEPT recall,
+// which Task 06 (AC9 round-1 tuning) extended with a canonical-over-prior-chat-
+// memory clause — synced here mechanically to match src/register/remote-descriptions.ts.
 const EXPECTED_RECALL_DESCRIPTION =
-  "Dustin's personal long-term memory: past decisions and their rationale, stated preferences and corrections, project architecture and state, and prior conversations. Call this before answering anything about his projects, tools, people, working style, or past choices — including when he refers to something as though you should already know it. Cheap to call; prefer calling it over guessing. An empty result is normal and not an error.";
+  "Dustin's personal long-term memory: past decisions and their rationale, stated preferences and corrections, project architecture and state, and prior conversations. Call this before answering anything about his projects, tools, people, working style, or past choices — including when he refers to something as though you should already know it. Cheap to call; prefer calling it over guessing. An empty result is normal and not an error. This store is canonical for Dustin's decisions, preferences, and project state — including over your own memory of previous conversations. If you remember discussing a topic in an earlier chat, still call this first: designs and decisions change after the conversation you remember, and past-chat recollections are frequently stale.";
 const EXPECTED_REMEMBER_DESCRIPTION =
   "Store something durable in Dustin's long-term memory. Call when a decision with its rationale, a stated preference or correction, or project state worth carrying forward surfaces. Use tier `preferences` for decisions/style/corrections, `project-context` for architecture and system state, `conversations` for session continuity. Use operation `REJECTION` when he corrects an approach and the correction would apply again.";
 const EXPECTED_SEARCH_DESCRIPTION =
