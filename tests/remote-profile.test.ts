@@ -443,3 +443,48 @@ describe('AC5 — remote remember never triggers the graph-rebuild subprocess (R
     }
   });
 });
+
+// Final-audit finding (SPEC-059 Phase 5, refute panel 2/3 on AC2): the AC's
+// letter names the module graph of dist/remote.js, but the guards above walk
+// the TypeScript sources. tsc emits a 1:1 module structure (no bundling), so
+// the graphs are structurally identical — but "structurally identical" is an
+// argument, not a test. This block runs the SAME walker over the BUILT
+// artifacts. Like tests/remote-startup.test.ts, it assumes the documented
+// `npm run build && npm test` ordering and does not build on its own.
+describe('AC2 (dist) — the same audit against the built artifacts', () => {
+  const toDist = (absSrcPath: string): string =>
+    absSrcPath.replace(`${resolve(REPO_ROOT, 'src')}/`, `${resolve(REPO_ROOT, 'dist')}/`).replace(/\.ts$/, '.js');
+
+  const DIST_REMOTE = resolve(REPO_ROOT, 'dist/remote.js');
+  const DIST_INDEX = resolve(REPO_ROOT, 'dist/index.js');
+  const DIST_FORBIDDEN_FILES = FORBIDDEN_FILES.map(toDist);
+  const DIST_FORBIDDEN_DIR_PREFIXES = FORBIDDEN_DIR_PREFIXES.map(toDist);
+  const DIST_ELEVEN_TOOL_FILES = ELEVEN_STDIO_TOOL_FILES.map(toDist);
+
+  it('AC2a (dist): no forbidden module is reachable from dist/remote.js', () => {
+    const { visited } = walkImports(DIST_REMOTE);
+    expect(visited.size).toBeGreaterThan(1);
+    const visitedArray = Array.from(visited);
+    for (const forbidden of DIST_FORBIDDEN_FILES) {
+      expect(visitedArray).not.toContain(forbidden);
+    }
+    for (const file of visited) {
+      for (const dirPrefix of DIST_FORBIDDEN_DIR_PREFIXES) {
+        expect(file.startsWith(dirPrefix)).toBe(false);
+      }
+    }
+  });
+
+  it('AC2b (dist): no module reachable from dist/remote.js imports node:child_process', () => {
+    const { childProcessImporters } = walkImports(DIST_REMOTE);
+    expect(Array.from(childProcessImporters)).toEqual([]);
+  });
+
+  it('AC2c (dist) control: dist/index.js still reaches all 11 built tool modules', () => {
+    const { visited } = walkImports(DIST_INDEX);
+    const visitedArray = Array.from(visited);
+    for (const toolFile of DIST_ELEVEN_TOOL_FILES) {
+      expect(visitedArray).toContain(toolFile);
+    }
+  });
+});
