@@ -27,3 +27,23 @@ describe('database', () => {
     expect(res.rows.length).toBe(1);
   });
 });
+
+describe('DATE column round-trip (trk-fj8: OID 1082 day-early bug)', () => {
+  const originalTz = process.env.TZ;
+
+  beforeAll(() => {
+    // East of UTC: node-pg's default DATE parser builds a JS Date at local
+    // midnight, which only reads back a day early once local time is ahead
+    // of UTC. Melbourne (+10/+11) is what the original bug report used.
+    process.env.TZ = 'Australia/Melbourne';
+  });
+
+  afterAll(() => {
+    process.env.TZ = originalTz;
+  });
+
+  it('returns the exact stored YYYY-MM-DD string regardless of local timezone', async () => {
+    const res = await pool.query("SELECT '2026-05-12'::date AS d");
+    expect(res.rows[0].d).toBe('2026-05-12');
+  });
+});
