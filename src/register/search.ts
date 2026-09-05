@@ -31,6 +31,12 @@ export function registerSearch(server: McpServer, ctx: ToolContext): void {
         .describe(
           'Search across ALL project scopes instead of the current scope + global (default: false).',
         ),
+      scope: z
+        .string()
+        .optional()
+        .describe(
+          'Read a SPECIFIC project scope (+ global) instead of the server scope — e.g. "ai-landscape" to read that wiki corpus. Ignored when all_scopes is true.',
+        ),
     },
     async (args) => {
       const result = await withToolSpan(
@@ -45,6 +51,7 @@ export function registerSearch(server: McpServer, ctx: ToolContext): void {
             query: args.query,
             limit: args.limit,
             all_scopes: args.all_scopes,
+            scope: args.scope,
           });
           span.setAttribute('result_count', r.count ?? 0);
           return r;
