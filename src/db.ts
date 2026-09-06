@@ -36,6 +36,12 @@ export function getPool(): pg.Pool {
 export async function connectDb(): Promise<void> {
   const p = getPool();
 
+  // DATE (OID 1082) has no time component, so the wire string 'YYYY-MM-DD' is
+  // already the correct representation. node-pg's default parser instead builds
+  // a JS Date at LOCAL midnight, which any east-of-UTC timezone then reads back
+  // a day early once serialised. Identity parser sidesteps the lossy round-trip.
+  pg.types.setTypeParser(1082, (v) => v);
+
   // pgvector.registerTypes requires a client (not pool) for setTypeParser
   const client = await p.connect();
   try {
