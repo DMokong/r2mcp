@@ -5,6 +5,11 @@ entries reference the internal spec numbers that shipped them.
 
 ## [Unreleased]
 
+### Changed
+
+- **claude-code provider runs slim by default** (trk-72v): every `claude -p` call (and the login probe) now passes `--setting-sources project --strict-mcp-config --tools "" --disable-slash-commands --no-session-persistence --system-prompt <one line>` and runs from an empty temp directory, so the caller's CLAUDE.md, hooks, plugins, MCP servers and tool schemas are no longer loaded around a self-contained prompt. Measured in a real workspace: ~63K → 2–5K tokens per call, same answers, ~4x faster, no transcript per call. `R2MCP_CLAUDE_SLIM=0` restores the old behaviour. `--bare` is not used because it skips OAuth credentials.
+- **claude-code concurrency is configurable** via `R2MCP_CLAUDE_CONCURRENCY` (1–16, default 2).
+
 ## [0.3.0] — 2026-07-03
 
 ### Changed

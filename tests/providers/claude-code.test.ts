@@ -1,6 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { ClaudeCodeProvider, parseClaudeJson, probeClaudeCode } from '../../src/providers/claude-code.js';
+import { existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  ClaudeCodeProvider,
+  SLIM_SYSTEM_PROMPT,
+  concurrencyFromEnv,
+  parseClaudeJson,
+  probeClaudeCode,
+} from '../../src/providers/claude-code.js';
 
 /**
  * Build a minimal mock of the child_process API surface that the adapter uses.
@@ -150,5 +159,103 @@ describe('spawn-failure remediation (claw-8cjf.7)', () => {
     }) as unknown as typeof import('node:child_process').spawn;
     const p = new ClaudeCodeProvider({ spawnFn });
     await expect(p.complete({ model: 'haiku', prompt: 'hi' })).rejects.toThrow(/EACCES/);
+  });
+});
+
+describe('slim harness (trk-72v)', () => {
+  type Call = { args: string[]; opts: { cwd?: string } };
+  const slimCwd = join(tmpdir(), `r2mcp-slim-test-${process.pid}`);
+
+  function capture(stdout = '{"result":"ok"}') {
+    const calls: Call[] = [];
+    const spawnFn = vi.fn((_bin: string, args: string[], opts: { cwd?: string }) => {
+      calls.push({ args, opts });
+      return fakeSpawn(stdout, 0);
+    }) as unknown as typeof import('node:child_process').spawn;
+    return { calls, spawnFn };
+  }
+
+  const flagValue = (args: string[], flag: string) => args[args.indexOf(flag) + 1];
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(slimCwd, { recursive: true, force: true });
+  });
+
+  it('runs complete() without the project harness by default', async () => {
+    const { calls, spawnFn } = capture();
+    const p = new ClaudeCodeProvider({ spawnFn, slimCwd });
+    await p.complete({ model: 'sonnet', prompt: 'classify' });
+
+    const { args } = calls[0];
+    expect(args.slice(0, 5)).toEqual(['-p', 'classify', '--output-format=json', '--model', 'claude-sonnet-5']);
+    expect(flagValue(args, '--setting-sources')).toBe('project');
+    expect(flagValue(args, '--tools')).toBe('');
+    expect(flagValue(args, '--system-prompt')).toBe(SLIM_SYSTEM_PROMPT);
+    for (const flag of ['--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence']) {
+      expect(args).toContain(flag);
+    }
+    expect(args).not.toContain('--bare'); // --bare never reads OAuth credentials
+  });
+
+  it('runs slim calls from an empty directory it creates, outside the caller cwd', async () => {
+    const { calls, spawnFn } = capture();
+    const p = new ClaudeCodeProvider({ spawnFn, slimCwd });
+    await p.complete({ model: 'haiku', prompt: 'hi' });
+
+    expect(calls[0].opts.cwd).toBe(slimCwd);
+    expect(existsSync(slimCwd)).toBe(true);
+    expect(slimCwd.startsWith(process.cwd())).toBe(false);
+  });
+
+  it('keeps the inlined [SYSTEM] section in the prompt', async () => {
+    const { calls, spawnFn } = capture();
+    const p = new ClaudeCodeProvider({ spawnFn, slimCwd });
+    await p.complete({ model: 'haiku', system: 'You are a filter.', prompt: 'A vs B' });
+    expect(calls[0].args[1]).toBe('[SYSTEM]\nYou are a filter.\n[/SYSTEM]\n\nA vs B');
+  });
+
+  it('slim: false spawns the original argument list with no cwd override', async () => {
+    const { calls, spawnFn } = capture();
+    const p = new ClaudeCodeProvider({ spawnFn, slim: false, slimCwd });
+    await p.complete({ model: 'haiku', prompt: 'hi' });
+    expect(calls[0].args).toEqual(['-p', 'hi', '--output-format=json', '--model', 'claude-haiku-4-5']);
+    expect(calls[0].opts.cwd).toBeUndefined();
+  });
+
+  it('R2MCP_CLAUDE_SLIM=0 turns slim mode off', async () => {
+    vi.stubEnv('R2MCP_CLAUDE_SLIM', '0');
+    const { calls, spawnFn } = capture();
+    await new ClaudeCodeProvider({ spawnFn, slimCwd }).complete({ model: 'haiku', prompt: 'hi' });
+    expect(calls[0].args).not.toContain('--setting-sources');
+  });
+
+  it('probeClaudeCode is slim too', async () => {
+    const { calls, spawnFn } = capture();
+    expect(await probeClaudeCode({ spawnFn, slimCwd })).toBe(true);
+    expect(calls[0].args.slice(0, 3)).toEqual(['-p', 'ok', '--output-format=json']);
+    expect(calls[0].args).toContain('--no-session-persistence');
+    expect(calls[0].opts.cwd).toBe(slimCwd);
+  });
+});
+
+describe('concurrency limit (trk-72v)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('defaults to 2 and honours a valid R2MCP_CLAUDE_CONCURRENCY', () => {
+    expect(concurrencyFromEnv({})).toBe(2);
+    expect(concurrencyFromEnv({ R2MCP_CLAUDE_CONCURRENCY: '4' })).toBe(4);
+  });
+
+  it('ignores values that are not an integer in 1..16', () => {
+    for (const bad of ['0', '-1', '2.5', 'many', '17', '']) {
+      expect(concurrencyFromEnv({ R2MCP_CLAUDE_CONCURRENCY: bad })).toBe(2);
+    }
+  });
+
+  it('reads the env at construction, and an explicit option wins', () => {
+    vi.stubEnv('R2MCP_CLAUDE_CONCURRENCY', '6');
+    expect(new ClaudeCodeProvider().concurrencyLimit).toBe(6);
+    expect(new ClaudeCodeProvider({ concurrencyLimit: 3 }).concurrencyLimit).toBe(3);
   });
 });

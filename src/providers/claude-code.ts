@@ -1,4 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   CompleteRequest,
   CompleteResponse,
@@ -30,6 +33,52 @@ const MODEL_IDS: Record<LogicalModel, string> = {
 
 const DEFAULT_PROBE_TIMEOUT_MS = 5_000;
 const DEFAULT_RUN_TIMEOUT_MS = 120_000;
+const DEFAULT_CONCURRENCY = 2;
+const MAX_CONCURRENCY = 16;
+
+/**
+ * Slim harness (trk-72v). The provider's prompt is self-contained — the system
+ * section is inlined as `[SYSTEM]…[/SYSTEM]` — so everything Claude Code loads
+ * around it is overhead: the working directory's CLAUDE.md, settings hooks,
+ * plugins, MCP servers, tool schemas and the default agent system prompt.
+ * Measured from a real workspace (2026-09-15): ~44K cache-write + ~19K
+ * cache-read tokens per call with the harness, 2–5K without, the same answers
+ * on classify/extract prompts, ~4x faster, and no session transcript written
+ * per call. Slim calls run from an empty directory outside any project so no
+ * CLAUDE.md is discovered.
+ *
+ * `--bare` is deliberately not used: it never reads OAuth/keychain
+ * credentials, which is how the Max plan authenticates.
+ */
+export const SLIM_SYSTEM_PROMPT =
+  "You are a precise text-processing function. Follow the user's instructions exactly and output only what they ask for.";
+
+export const SLIM_ARGS: readonly string[] = [
+  '--setting-sources',
+  'project',
+  '--strict-mcp-config',
+  '--tools',
+  '',
+  '--disable-slash-commands',
+  '--no-session-persistence',
+  '--system-prompt',
+  SLIM_SYSTEM_PROMPT,
+];
+
+/** Slim unless `R2MCP_CLAUDE_SLIM=0`. */
+export function slimFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.R2MCP_CLAUDE_SLIM !== '0';
+}
+
+/** `R2MCP_CLAUDE_CONCURRENCY` when it is an integer in 1..16, else 2 (D.R6). */
+export function concurrencyFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env.R2MCP_CLAUDE_CONCURRENCY);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_CONCURRENCY ? n : DEFAULT_CONCURRENCY;
+}
+
+function defaultSlimCwd(): string {
+  return join(tmpdir(), 'r2mcp-claude-slim');
+}
 
 export interface ClaudeCodeOptions {
   /** Override the binary name (tests use this to point at a stub). */
@@ -38,16 +87,25 @@ export interface ClaudeCodeOptions {
   spawnFn?: typeof spawn;
   /** Per-call timeout in milliseconds. Default 120s. */
   runTimeoutMs?: number;
+  /** Run calls without the Claude Code project harness. Default: true unless R2MCP_CLAUDE_SLIM=0. */
+  slim?: boolean;
+  /** Empty directory slim calls run from. Default: `<os tmpdir>/r2mcp-claude-slim`. */
+  slimCwd?: string;
+  /** Parallel subprocess cap. Default: R2MCP_CLAUDE_CONCURRENCY, else 2. */
+  concurrencyLimit?: number;
 }
 
 export class ClaudeCodeProvider implements LLMProvider {
   readonly name: ProviderName = 'claude-code';
-  // Subprocess overhead — keep this conservative. D.R6.
-  readonly concurrencyLimit = 2;
+  // Subprocess overhead — keep this conservative by default (D.R6). Slim calls
+  // are light enough that operators may raise it via R2MCP_CLAUDE_CONCURRENCY.
+  readonly concurrencyLimit: number;
 
   private readonly binary: string;
   private readonly spawnFn: typeof spawn;
   private readonly runTimeoutMs: number;
+  private readonly slim: boolean;
+  private readonly slimCwd: string;
 
   constructor(opts: ClaudeCodeOptions = {}) {
     // Resolution precedence: explicit opts.binary → R2MCP_CLAUDE_BIN env →
@@ -57,6 +115,9 @@ export class ClaudeCodeProvider implements LLMProvider {
     this.binary = opts.binary ?? process.env.R2MCP_CLAUDE_BIN ?? 'claude';
     this.spawnFn = opts.spawnFn ?? spawn;
     this.runTimeoutMs = opts.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+    this.slim = opts.slim ?? slimFromEnv();
+    this.slimCwd = opts.slimCwd ?? defaultSlimCwd();
+    this.concurrencyLimit = opts.concurrencyLimit ?? concurrencyFromEnv();
   }
 
   async complete(req: CompleteRequest): Promise<CompleteResponse> {
@@ -67,8 +128,15 @@ export class ClaudeCodeProvider implements LLMProvider {
       '--output-format=json',
       '--model',
       MODEL_IDS[req.model],
+      ...(this.slim ? SLIM_ARGS : []),
     ];
-    const stdout = await runClaude(this.spawnFn, this.binary, args, this.runTimeoutMs);
+    const stdout = await runClaude(
+      this.spawnFn,
+      this.binary,
+      args,
+      this.runTimeoutMs,
+      this.slim ? this.slimCwd : undefined,
+    );
     const parsed = parseClaudeJson(stdout);
     return {
       response: parsed.text,
@@ -95,13 +163,23 @@ export async function probeClaudeCode(
     binary?: string;
     spawnFn?: typeof spawn;
     timeoutMs?: number;
+    slim?: boolean;
+    slimCwd?: string;
   } = {},
 ): Promise<boolean> {
   const binary = opts.binary ?? process.env.R2MCP_CLAUDE_BIN ?? 'claude';
   const spawnFn = opts.spawnFn ?? spawn;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
+  const slim = opts.slim ?? slimFromEnv();
+  const args = ['-p', 'ok', '--output-format=json', ...(slim ? SLIM_ARGS : [])];
   try {
-    const out = await runClaude(spawnFn, binary, ['-p', 'ok', '--output-format=json'], timeoutMs);
+    const out = await runClaude(
+      spawnFn,
+      binary,
+      args,
+      timeoutMs,
+      slim ? (opts.slimCwd ?? defaultSlimCwd()) : undefined,
+    );
     const parsed = parseClaudeJson(out);
     return typeof parsed.text === 'string';
   } catch {
@@ -129,11 +207,13 @@ function runClaude(
   binary: string,
   args: string[],
   timeoutMs: number,
+  cwd?: string,
 ): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let child: ChildProcess;
     try {
-      child = spawnFn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      if (cwd) mkdirSync(cwd, { recursive: true });
+      child = spawnFn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'], ...(cwd ? { cwd } : {}) });
     } catch (err) {
       reject(wrapSpawnError(err instanceof Error ? err : new Error(String(err)), binary));
       return;
