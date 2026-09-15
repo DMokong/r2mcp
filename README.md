@@ -197,6 +197,8 @@ consumers, **the `.mcp.json` `env` block is the primary config surface**
 | `R2MCP_OPENROUTER_API_KEY` | Recommended | Enables semantic-search embeddings. When unset, the server logs a startup warning and `remember`/`recall` responses carry a `warnings[]` field — everything still works full-text. |
 | `R2MCP_SCOPE` | Optional | Project namespace (default `global`). Set this per-project so multiple projects can share one database without their memories colliding — see [Cross-Project Memory](#cross-project-memory). |
 | `R2MCP_CLAUDE_BIN` | Sometimes | Absolute path to the `claude` binary for the $0 Max-plan provider. Needed when the spawning process's PATH doesn't include it — common under launchd jobs and some MCP hosts (e.g. `~/.local/bin/claude`). The spawn error names this variable when it's the fix. |
+| `R2MCP_CLAUDE_SLIM` | No | Set to `0` to run claude-code provider calls with the full Claude Code harness. By default each call runs from an empty temp directory with no settings, MCP servers, tools or skills — the prompt is self-contained, and the harness otherwise adds ~60K tokens per call. |
+| `R2MCP_CLAUDE_CONCURRENCY` | No | Parallel claude-code subprocesses (integer 1–16, default 2). Slim calls are light enough to raise it; each one still draws on the same Max-plan limit. |
 | `ANTHROPIC_API_KEY` | Optional | Only for `--provider=anthropic` on classifier/compile runs. |
 | `R2MCP_CLASSIFIER_PROVIDER` | Optional | Pin a provider (`claude-code` \| `anthropic` \| `openrouter`) instead of auto-fallback. |
 | `R2MCP_EDGE_MAX_USD` / `R2MCP_COMPILE_MAX_USD` / `R2MCP_ENTITY_MAX_USD` | Optional | Cost caps for the batch jobs (defaults `$1.00`). |
