@@ -23,17 +23,24 @@ const STAGE1_NOUL_INSTRUCTIONS =
   'that a deeper analysis is worthwhile; answer low if they merely share topic tags but ' +
   'describe distinct, non-conflicting things.';
 
+// Encoder backends (Laya/Verdict) read each option's own description far more
+// than a long instruction, and options share a small token budget — so the
+// definitions live on the options and the instruction stays short.
 const STAGE2_CHOICE_INSTRUCTIONS =
-  'Classify the structural relation between memory A and memory B. "supports": B reinforces ' +
-  'or is consistent with A. "contradicts": A and B make conflicting factual claims about the ' +
-  'same subject (never for a rejection-typed memory — that is a meta-statement, not a factual ' +
-  'claim). "supersedes": A explicitly replaces B as the current framing (A is newer). ' +
-  '"evolved_into": A is a refined version of B with the same core intent. "depends_on": A ' +
-  'presupposes B\'s truth. "related_to": same general topic but no stronger relation applies ' +
-  '— the weakest signal, avoid unless no stronger relation fits. "none": no meaningful relation.';
+  'How is memory A related to memory B? A rejection-typed memory never "contradicts" anything.';
+
+const STAGE2_LABEL_DESCRIPTIONS: Record<EdgeRelation | 'none', string> = {
+  supports: 'B reinforces or agrees with A',
+  contradicts: 'A and B make conflicting claims about the same thing',
+  supersedes: 'one replaces the other as the current version',
+  evolved_into: 'one is a refined version of the other, same intent',
+  depends_on: 'one presupposes the other',
+  related_to: 'same topic, no stronger relation',
+  none: 'unrelated',
+};
 
 const STAGE2_LABELS: Record<string, string | null> = Object.fromEntries(
-  STAGE2_RELATIONS.map((relation) => [relation, null]),
+  STAGE2_RELATIONS.map((relation) => [relation, STAGE2_LABEL_DESCRIPTIONS[relation]]),
 );
 
 function pairState(pair: PairContent, includeType: boolean): string {
