@@ -15,7 +15,7 @@
  *
  * Usage:
  *   npm run eval:classifiers -- [--corpus=PATH] [--backends=llm-path,fake]
- *                               [--limit=N] [--corpus-source=db-sample|public-fixture|ai-landscape]
+ *                               [--limit=N]   (corpus provenance is inferred from the path; only tests/fixtures/edge-corpus.jsonl counts as public)
  *
  * EGRESS: a DB-sampled corpus is refused for any remote 'typesafe' backend —
  * see src/classifiers/eval/egress-guard.ts. This is a hard rule, not advisory.
@@ -31,6 +31,7 @@ import type { EdgeRelation } from '../edges/types.js';
 import type { ClassifierProvider } from '../classifiers/types.js';
 import { classifyStage1AsNoul, classifyStage2AsChoice, type PairContent } from '../classifiers/eval/adapters.js';
 import { createFakeClassifierProvider } from '../classifiers/eval/fake-provider.js';
+import { LLMEnumClassifier, OpenJevClassifier, TypeSafeClassifier } from '../classifiers/index.js';
 import { assertEgressAllowed, type CorpusSource } from '../classifiers/eval/egress-guard.js';
 import {
   sweepStage1Thresholds,
@@ -55,13 +56,16 @@ interface CorpusRecord {
   stage1_pass: boolean | null;
 }
 
-/** Backends resolvable today. Real ClassifierProvider backends (openjev/typesafe/
- * llm-enum) register here once trk-7mx.2 lands src/classifiers/index.ts. */
-const CLASSIFIER_REGISTRY: Record<string, () => ClassifierProvider> = {
-  fake: () => createFakeClassifierProvider(),
+/** ClassifierProvider backends the runner can compare against the llm-path. */
+const CLASSIFIER_REGISTRY: Record<string, () => Promise<ClassifierProvider>> = {
+  fake: async () => createFakeClassifierProvider(),
+  openjev: async () => new OpenJevClassifier(),
+  typesafe: async () => new TypeSafeClassifier(),
+  'llm-enum': async () => new LLMEnumClassifier(await selectProvider()),
 };
 
-const DEFAULT_ENV_FILE = '/Users/dustincheng/projects/r2mcp/.env';
+/** The only corpus treated as public: the committed, hand-labelled synthetic fixture. */
+const PUBLIC_FIXTURE = resolve('tests/fixtures/edge-corpus.jsonl');
 
 interface CliArgs {
   corpusPath: string;
@@ -78,8 +82,9 @@ function parseArgs(argv: string[]): CliArgs {
   const corpusPath = resolve(flagValue(argv, '--corpus') ?? 'data/classifier-eval/corpus.jsonl');
   const backends = (flagValue(argv, '--backends') ?? 'llm-path,fake').split(',').map((b) => b.trim());
   const limit = Number(flagValue(argv, '--limit') ?? '10');
-  const inferredSource: CorpusSource = corpusPath.includes('fixtures') ? 'public-fixture' : 'db-sample';
-  const corpusSource = (flagValue(argv, '--corpus-source') as CorpusSource | undefined) ?? inferredSource;
+  // Fail closed: provenance comes from the path, never from a flag, so no
+  // argument can relabel DB-sampled private text as public.
+  const corpusSource: CorpusSource = corpusPath === PUBLIC_FIXTURE ? 'public-fixture' : 'db-sample';
   return { corpusPath, backends, limit, corpusSource };
 }
 
@@ -200,7 +205,7 @@ function toMarkdown(timestamp: string, corpusPath: string, results: Record<strin
 }
 
 async function main() {
-  loadEnvFile(process.env.R2MCP_ENV_FILE ?? DEFAULT_ENV_FILE);
+  loadEnvFile(process.env.R2MCP_ENV_FILE ?? '.env');
   const args = parseArgs(process.argv.slice(2));
   const allRecords = loadCorpus(args.corpusPath);
   const records = allRecords.slice(0, args.limit);
@@ -217,11 +222,10 @@ async function main() {
     const factory = CLASSIFIER_REGISTRY[backend];
     if (!factory) {
       throw new Error(
-        `Unknown backend "${backend}". Available: llm-path, ${Object.keys(CLASSIFIER_REGISTRY).join(', ')}. ` +
-          `Real ClassifierProvider backends (openjev/typesafe/llm-enum) register once trk-7mx.2 lands src/classifiers/index.ts.`,
+        `Unknown backend "${backend}". Available: llm-path, ${Object.keys(CLASSIFIER_REGISTRY).join(', ')}.`,
       );
     }
-    const provider = factory();
+    const provider = await factory();
     assertEgressAllowed(provider, args.corpusSource);
     const judgments = await runClassifierBackend(provider, records);
     results[backend] = summarize(judgments);

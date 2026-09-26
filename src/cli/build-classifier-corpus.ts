@@ -27,9 +27,9 @@ import { findCandidatePairs } from '../edges/candidate-pairs.js';
 import { pairHash } from '../edges/state.js';
 import type { EdgeRelation } from '../edges/types.js';
 
-// r2mcp's main checkout — this worktree has no .env of its own (trk-7mx.1 brief).
-// Overridable via --env-file / R2MCP_ENV_FILE for other machines or tests.
-const DEFAULT_PROJECT_ROOT = '/Users/dustincheng/projects/r2mcp';
+// The checkout holding .env and data/edges-state.jsonl. A git worktree has
+// neither, so point R2MCP_PROJECT_ROOT (or --env-file) at the main checkout.
+const DEFAULT_PROJECT_ROOT = process.env.R2MCP_PROJECT_ROOT ?? process.cwd();
 
 interface RawMemory {
   id: string;
