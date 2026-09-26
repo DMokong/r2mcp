@@ -57,10 +57,11 @@ interface CorpusRecord {
 }
 
 /** ClassifierProvider backends the runner can compare against the llm-path. */
-const CLASSIFIER_REGISTRY: Record<string, () => Promise<ClassifierProvider>> = {
+const CLASSIFIER_REGISTRY: Record<string, (source: CorpusSource) => Promise<ClassifierProvider>> = {
   fake: async () => createFakeClassifierProvider(),
   openjev: async () => new OpenJevClassifier(),
-  typesafe: async () => new TypeSafeClassifier(),
+  // Bound to the corpus provenance: construction throws for a private corpus.
+  typesafe: async (source) => new TypeSafeClassifier({ scope: source }),
   'llm-enum': async () => new LLMEnumClassifier(await selectProvider()),
 };
 
@@ -225,7 +226,7 @@ async function main() {
         `Unknown backend "${backend}". Available: llm-path, ${Object.keys(CLASSIFIER_REGISTRY).join(', ')}.`,
       );
     }
-    const provider = await factory();
+    const provider = await factory(args.corpusSource);
     assertEgressAllowed(provider, args.corpusSource);
     const judgments = await runClassifierBackend(provider, records);
     results[backend] = summarize(judgments);

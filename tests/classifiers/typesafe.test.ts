@@ -10,7 +10,17 @@ function jsonResponse(body: unknown): Response {
 
 describe('TypeSafeClassifier', () => {
   it('requires a hosted Jev API key', () => {
-    expect(() => new TypeSafeClassifier({ env: {} })).toThrow(/JEV_API_KEY.*TYPESAFE_API_KEY/);
+    expect(() => new TypeSafeClassifier({ scope: 'ai-landscape', env: {} })).toThrow(/JEV_API_KEY.*TYPESAFE_API_KEY/);
+  });
+
+  it('refuses construction for a private or missing scope, before any key lookup', () => {
+    const env = { JEV_API_KEY: 'jev-key' };
+    expect(() => new TypeSafeClassifier({ scope: 'claudeclaw', env })).toThrow(/not allowed/);
+    expect(() => new TypeSafeClassifier({ scope: 'db-sample', env })).toThrow(/not allowed/);
+    expect(() => new TypeSafeClassifier({ scope: undefined as unknown as string, env })).toThrow(
+      /not allowed/,
+    );
+    expect(new TypeSafeClassifier({ scope: 'public-fixture', env }).scope).toBe('public-fixture');
   });
 
   it('uses JEV_API_KEY before TYPESAFE_API_KEY and prices input tokens only', async () => {
@@ -24,6 +34,7 @@ describe('TypeSafeClassifier', () => {
       });
     });
     const classifier = new TypeSafeClassifier({
+      scope: 'ai-landscape',
       env: { JEV_API_KEY: 'jev-key', TYPESAFE_API_KEY: 'typesafe-key' },
       fetchFn,
     });
@@ -50,6 +61,7 @@ describe('TypeSafeClassifier', () => {
       }),
     );
     const classifier = new TypeSafeClassifier({
+      scope: 'ai-landscape',
       env: { TYPESAFE_API_KEY: 'test-key', TYPESAFE_BASE_URL: 'https://jev.example.test/root/' },
       fetchFn,
     });

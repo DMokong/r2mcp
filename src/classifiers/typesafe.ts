@@ -1,10 +1,17 @@
 import { TypeSafeClient, type Fetch } from '@typesafe-ai/sdk';
+import { assertRemoteScopeAllowed } from './egress.js';
 import { fromSystemOneResult, toSystemOneRequest } from './system-one.js';
 import type { ClassifierProvider, ClassifyRequest, ClassifyResponse } from './types.js';
 
 const INPUT_PRICE_PER_MILLION_USD = 0.042;
 
 export interface TypeSafeClassifierOptions {
+  /**
+   * The memory scope this instance classifies. Required, and checked against
+   * R2MCP_REMOTE_CLASSIFIER_SCOPES at construction: an instance bound to a
+   * private scope cannot exist, so no call path can forget the egress check.
+   */
+  scope: string;
   apiKey?: string;
   baseURL?: string;
   env?: NodeJS.ProcessEnv;
@@ -15,11 +22,14 @@ export class TypeSafeClassifier implements ClassifierProvider {
   readonly name = 'typesafe' as const;
   readonly egress = 'remote' as const;
   readonly concurrencyLimit = 10;
+  readonly scope: string;
 
   private readonly client: TypeSafeClient;
 
-  constructor(options: TypeSafeClassifierOptions = {}) {
+  constructor(options: TypeSafeClassifierOptions) {
     const env = options.env ?? process.env;
+    assertRemoteScopeAllowed(options.scope, env);
+    this.scope = options.scope;
     const apiKey = firstNonBlank(options.apiKey, env.JEV_API_KEY, env.TYPESAFE_API_KEY);
     if (apiKey === undefined) {
       throw new Error(

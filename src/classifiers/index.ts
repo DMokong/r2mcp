@@ -1,5 +1,6 @@
 import { LLMEnumClassifier } from './llm-enum.js';
 import { OpenJevClassifier } from './openjev.js';
+import { assertRemoteScopeAllowed } from './egress.js';
 import { TypeSafeClassifier } from './typesafe.js';
 import type { LLMProvider } from '../providers/types.js';
 import type { ClassifierBackendName, ClassifierProvider } from './types.js';
@@ -9,16 +10,18 @@ export * from './system-one.js';
 export * from './typesafe.js';
 export * from './openjev.js';
 export * from './llm-enum.js';
+export { assertEgressAllowed, assertRemoteScopeAllowed, remoteClassifierScopes } from './egress.js';
 
 const CLASSIFIER_NAMES: readonly ClassifierBackendName[] = ['openjev', 'typesafe', 'llm-enum'];
-const DEFAULT_REMOTE_SCOPES = 'ai-landscape';
 
 export interface SelectClassifierOptions {
   flag?: ClassifierBackendName;
   env?: NodeJS.ProcessEnv;
   llmProvider?: LLMProvider;
+  /** Memory scope being classified. Required for the hosted 'typesafe' backend. */
+  scope?: string;
   makeOpenJev?: () => ClassifierProvider;
-  makeTypeSafe?: () => ClassifierProvider;
+  makeTypeSafe?: (scope: string) => ClassifierProvider;
   makeLLMEnum?: (provider: LLMProvider) => ClassifierProvider;
 }
 
@@ -39,32 +42,13 @@ export function selectClassifier(options: SelectClassifierOptions = {}): Classif
     return options.makeOpenJev?.() ?? new OpenJevClassifier({ env });
   }
   if (raw === 'typesafe') {
-    return options.makeTypeSafe?.() ?? new TypeSafeClassifier({ env });
+    // Checked before any factory runs, so an injected factory cannot skip it.
+    assertRemoteScopeAllowed(options.scope, env);
+    const scope = options.scope as string;
+    return options.makeTypeSafe?.(scope) ?? new TypeSafeClassifier({ scope, env });
   }
   if (!options.llmProvider) {
     throw new Error('Selecting llm-enum requires an existing LLMProvider.');
   }
   return options.makeLLMEnum?.(options.llmProvider) ?? new LLMEnumClassifier(options.llmProvider);
-}
-
-/** Refuse hosted Jev before any private memory scope can leave the process. */
-export function assertEgressAllowed(
-  provider: ClassifierProvider,
-  scope: string,
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  if (provider.name !== 'typesafe') return;
-
-  const allowed = new Set(
-    (env.R2MCP_REMOTE_CLASSIFIER_SCOPES ?? DEFAULT_REMOTE_SCOPES)
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean),
-  );
-  if (!allowed.has(scope)) {
-    throw new Error(
-      `Hosted Jev egress is not allowed for scope "${scope}". ` +
-        'Add an explicitly public scope to R2MCP_REMOTE_CLASSIFIER_SCOPES to allow it.',
-    );
-  }
 }

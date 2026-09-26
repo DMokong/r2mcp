@@ -30,14 +30,25 @@ describe('selectClassifier', () => {
     ).toBe(openjev);
   });
 
-  it('selects TypeSafe from R2MCP_CLASSIFIER_BACKEND', () => {
+  it('selects TypeSafe from R2MCP_CLASSIFIER_BACKEND for a public scope', () => {
     const typesafe = classifier('typesafe');
     expect(
       selectClassifier({
         env: { R2MCP_CLASSIFIER_BACKEND: 'typesafe' },
+        scope: 'ai-landscape',
         makeTypeSafe: () => typesafe,
       }),
     ).toBe(typesafe);
+  });
+
+  it('refuses TypeSafe for a private or missing scope before any factory runs', () => {
+    const makeTypeSafe = vi.fn(() => classifier('typesafe'));
+    for (const scope of ['claudeclaw', undefined]) {
+      expect(() =>
+        selectClassifier({ env: { R2MCP_CLASSIFIER_BACKEND: 'typesafe' }, scope, makeTypeSafe }),
+      ).toThrow(/not allowed/);
+    }
+    expect(makeTypeSafe).not.toHaveBeenCalled();
   });
 
   it('requires an existing LLMProvider for llm-enum', () => {
