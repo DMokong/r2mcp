@@ -18,7 +18,6 @@
  *                          [--out-dir=DIR]
  */
 
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { loadEnvFile } from '../env.js';
@@ -26,27 +25,14 @@ import { initDb, getPool, closeDb } from '../db.js';
 import { findCandidatePairs } from '../edges/candidate-pairs.js';
 import { pairHash } from '../edges/state.js';
 import type { EdgeRelation } from '../edges/types.js';
+import { assertSafeDataPath } from '../classifiers/eval/safe-write.js';
+import type { CorpusRecord as SharedCorpusRecord, RawMemory } from '../classifiers/eval/corpus-schema.js';
 
 // The checkout holding .env and data/edges-state.jsonl. A git worktree has
 // neither, so point R2MCP_PROJECT_ROOT (or --env-file) at the main checkout.
 const DEFAULT_PROJECT_ROOT = process.env.R2MCP_PROJECT_ROOT ?? process.cwd();
 
-interface RawMemory {
-  id: string;
-  content: string;
-  type: string;
-}
-
-export interface CorpusRecord {
-  pair_id: string;
-  from: RawMemory;
-  to: RawMemory;
-  source: 'memory_edge' | 'stage1_rejected';
-  relation: EdgeRelation | null;
-  confidence: number | null;
-  /** Ground truth for Stage-1 recall: true=known relation, false=Stage1 rejected, i.e. unknown/needs spot-check. */
-  stage1_pass: boolean | null;
-}
+export type CorpusRecord = SharedCorpusRecord;
 
 interface CliArgs {
   envFile: string;
@@ -80,23 +66,6 @@ function parseArgs(argv: string[]): CliArgs {
   };
 }
 
-/** Refuses to write to `path` unless git actually ignores it (trk-7mx.1 hard rule). */
-function assertGitIgnored(path: string): void {
-  try {
-    execFileSync('git', ['check-ignore', '-q', path], { stdio: 'ignore' });
-  } catch (err) {
-    const status = (err as { status?: number }).status;
-    if (status === 1) {
-      throw new Error(
-        `Refusing to write ${path}: git does not consider it ignored. ` +
-          `Classifier eval data must never be committed.`,
-        { cause: err },
-      );
-    }
-    throw err;
-  }
-}
-
 /** Evenly interleaves items from each stratum until `total` is reached or all strata are exhausted. */
 function roundRobinSample<T>(strata: ReadonlyArray<T[]>, total: number): T[] {
   const queues = strata.map((s) => [...s]);
@@ -127,9 +96,11 @@ function readRejectedHashes(edgeStateFile: string): Set<string> {
   return rejected;
 }
 
+/** Canonicalizes + contains under data/ + checks git-ignore (in that order — fix #8), THEN writes. */
 function writeJsonl(path: string, records: ReadonlyArray<unknown>): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, records.map((r) => JSON.stringify(r)).join('\n') + (records.length ? '\n' : ''), 'utf-8');
+  const canonical = assertSafeDataPath(path);
+  mkdirSync(dirname(canonical), { recursive: true });
+  writeFileSync(canonical, records.map((r) => JSON.stringify(r)).join('\n') + (records.length ? '\n' : ''), 'utf-8');
 }
 
 async function main() {
@@ -138,8 +109,6 @@ async function main() {
 
   const corpusPath = join(args.outDir, 'corpus.jsonl');
   const spotCheckPath = join(args.outDir, 'spot-check.jsonl');
-  assertGitIgnored(corpusPath);
-  assertGitIgnored(spotCheckPath);
 
   await initDb();
   const pool = getPool();
