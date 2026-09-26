@@ -47,7 +47,11 @@ import { selectProvider, ProviderUnavailableError } from '../providers/index.js'
 import { stage1HaikuFilter } from '../edges/stage1-haiku.js';
 import { stage2OpusClassify, STAGE2_RELATIONS } from '../edges/stage2-opus.js';
 import type { ClassifierProvider } from '../classifiers/types.js';
-import { classifyStage1AsNoul, classifyStage2AsChoice, type PairContent } from '../classifiers/eval/adapters.js';
+import {
+  classifyStage1AsNoul,
+  classifyStage2AsChoice,
+  type PairContent,
+} from '../classifiers/eval/adapters.js';
 import { createFakeClassifierProvider } from '../classifiers/eval/fake-provider.js';
 import { LLMEnumClassifier, OpenJevClassifier, TypeSafeClassifier } from '../classifiers/index.js';
 import { assertEgressAllowed, type CorpusSource } from '../classifiers/eval/egress-guard.js';
@@ -59,7 +63,11 @@ import {
   parseHumanLabels,
   type CorpusRecord,
 } from '../classifiers/eval/corpus-schema.js';
-import { coverageWarning, intersectLabelsWithCorpus, selectRecords } from '../classifiers/eval/corpus-selection.js';
+import {
+  coverageWarning,
+  intersectLabelsWithCorpus,
+  selectRecords,
+} from '../classifiers/eval/corpus-selection.js';
 import {
   emptyAccumulator,
   judgeRecord,
@@ -97,12 +105,18 @@ interface CliArgs {
 }
 
 function flagValue(argv: string[], name: string): string | undefined {
-  return argv.find((a) => a.startsWith(`${name}=`))?.split('=').slice(1).join('=');
+  return argv
+    .find((a) => a.startsWith(`${name}=`))
+    ?.split('=')
+    .slice(1)
+    .join('=');
 }
 
 function parseArgs(argv: string[]): CliArgs {
   const corpusPath = flagValue(argv, '--corpus') ?? 'data/classifier-eval/corpus.jsonl';
-  const backends = (flagValue(argv, '--backends') ?? 'llm-path,fake').split(',').map((b) => b.trim());
+  const backends = (flagValue(argv, '--backends') ?? 'llm-path,fake')
+    .split(',')
+    .map((b) => b.trim());
   const limitRaw = flagValue(argv, '--limit');
   const limit = limitRaw !== undefined ? Number(limitRaw) : undefined;
   const labelsPath = flagValue(argv, '--labels');
@@ -117,7 +131,9 @@ function loadCorpus(buffer: Buffer, corpusSource: CorpusSource): CorpusRecord[] 
     .filter((l) => l.trim());
   return lines.map((line, i) => {
     const raw = JSON.parse(line);
-    return corpusSource === 'public-fixture' ? normalizeFixtureRecord(raw, i + 1) : normalizeDbRecord(raw, i + 1);
+    return corpusSource === 'public-fixture'
+      ? normalizeFixtureRecord(raw, i + 1)
+      : normalizeDbRecord(raw, i + 1);
   });
 }
 
@@ -135,7 +151,10 @@ function resolveGroundTruth(
   return { relation, stage1Pass: relation === null ? null : relation !== 'none' };
 }
 
-function groundTruthMode(corpusSource: CorpusSource, labelsPath: string | undefined): GroundTruthMode {
+function groundTruthMode(
+  corpusSource: CorpusSource,
+  labelsPath: string | undefined,
+): GroundTruthMode {
   if (corpusSource === 'public-fixture') return 'fixture';
   return labelsPath ? 'labels' : 'pipeline';
 }
@@ -147,7 +166,7 @@ function groundTruthNote(mode: GroundTruthMode): string {
   }
   return (
     'WARNING: no --labels provided — these numbers are AGREEMENT WITH THE CURRENT PIPELINE ' +
-    "(its own past Stage-1/Stage-2 output), NOT accuracy. Pass --labels=PATH with hand-labelled " +
+    '(its own past Stage-1/Stage-2 output), NOT accuracy. Pass --labels=PATH with hand-labelled ' +
     'ground truth (e.g. a completed spot-check.jsonl) for real accuracy.'
   );
 }
@@ -157,50 +176,74 @@ interface BackendJudgments extends JudgmentAccumulator {
   latenciesMs: number[];
   totalCostUsd: number;
   judgmentCount: number;
+  /** Pairs the backend could not judge (unparseable or failed call). Production
+   * loses these pairs too, so they are reported rather than aborting the run. */
+  failures: Array<{ pairId: string; message: string }>;
 }
 
 function emptyJudgments(mode: GroundTruthMode): BackendJudgments {
-  return { ...emptyAccumulator(), groundTruthMode: mode, latenciesMs: [], totalCostUsd: 0, judgmentCount: 0 };
+  return {
+    ...emptyAccumulator(),
+    groundTruthMode: mode,
+    latenciesMs: [],
+    totalCostUsd: 0,
+    judgmentCount: 0,
+    failures: [],
+  };
 }
 
-async function runLlmPath(records: CorpusRecord[], mode: GroundTruthMode, labels: Map<string, RelationLabel> | null): Promise<BackendJudgments> {
+function recordFailure(out: BackendJudgments, pairId: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  out.failures.push({ pairId, message: message.slice(0, 200) });
+  process.stderr.write(`judgment failed for ${pairId}: ${message.slice(0, 120)}\n`);
+}
+
+async function runLlmPath(
+  records: CorpusRecord[],
+  mode: GroundTruthMode,
+  labels: Map<string, RelationLabel> | null,
+): Promise<BackendJudgments> {
   const provider = await selectProvider();
   const out = emptyJudgments(mode);
 
   for (const rec of records) {
-    const gt = resolveGroundTruth(rec, mode, labels);
-    const pair = { from: rec.from, to: rec.to };
+    try {
+      const gt = resolveGroundTruth(rec, mode, labels);
+      const pair = { from: rec.from, to: rec.to };
 
-    // Time every call externally (fix #7) — stage1HaikuFilter/stage2OpusClassify
-    // don't surface the provider's own latency_ms in their return type.
-    const s1Start = Date.now();
-    const s1 = await stage1HaikuFilter(provider, pair);
-    out.latenciesMs.push(Date.now() - s1Start);
-    out.totalCostUsd += s1.cost_usd;
-    out.judgmentCount++;
-
-    let stage2: { relation: RelationLabel; confidence: number } | undefined;
-    if (stage2IsNeeded(s1.pass ? 1 : 0, gt.relation)) {
-      const s2Start = Date.now();
-      const s2 = await stage2OpusClassify(provider, pair);
-      out.latenciesMs.push(Date.now() - s2Start);
-      out.totalCostUsd += s2.cost_usd;
+      // Time every call externally (fix #7) — stage1HaikuFilter/stage2OpusClassify
+      // don't surface the provider's own latency_ms in their return type.
+      const s1Start = Date.now();
+      const s1 = await stage1HaikuFilter(provider, pair);
+      out.latenciesMs.push(Date.now() - s1Start);
+      out.totalCostUsd += s1.cost_usd;
       out.judgmentCount++;
-      // The raw LLM path returns only a top-1 confidence, no full distribution —
-      // stage2Temperature is only populated when one is available.
-      stage2 = { relation: s2.relation, confidence: s2.confidence };
-    }
 
-    pushJudgments(
-      out,
-      judgeRecord({
-        pairId: rec.pair_id,
-        groundTruthRelation: gt.relation,
-        groundTruthStage1Pass: gt.stage1Pass,
-        stage1Probability: s1.pass ? 1 : 0,
-        stage2,
-      }),
-    );
+      let stage2: { relation: RelationLabel; confidence: number } | undefined;
+      if (stage2IsNeeded(s1.pass ? 1 : 0, gt.relation)) {
+        const s2Start = Date.now();
+        const s2 = await stage2OpusClassify(provider, pair);
+        out.latenciesMs.push(Date.now() - s2Start);
+        out.totalCostUsd += s2.cost_usd;
+        out.judgmentCount++;
+        // The raw LLM path returns only a top-1 confidence, no full distribution —
+        // stage2Temperature is only populated when one is available.
+        stage2 = { relation: s2.relation, confidence: s2.confidence };
+      }
+
+      pushJudgments(
+        out,
+        judgeRecord({
+          pairId: rec.pair_id,
+          groundTruthRelation: gt.relation,
+          groundTruthStage1Pass: gt.stage1Pass,
+          stage1Probability: s1.pass ? 1 : 0,
+          stage2,
+        }),
+      );
+    } catch (err) {
+      recordFailure(out, rec.pair_id, err);
+    }
   }
   return out;
 }
@@ -214,33 +257,43 @@ async function runClassifierBackend(
   const out = emptyJudgments(mode);
 
   for (const rec of records) {
-    const gt = resolveGroundTruth(rec, mode, labels);
-    const pair: PairContent = { from: rec.from, to: rec.to };
+    try {
+      const gt = resolveGroundTruth(rec, mode, labels);
+      const pair: PairContent = { from: rec.from, to: rec.to };
 
-    const s1 = await classifyStage1AsNoul(provider, pair);
-    out.totalCostUsd += s1.cost_usd;
-    out.judgmentCount++;
-    out.latenciesMs.push(s1.latency_ms);
-
-    let stage2: { relation: RelationLabel; confidence: number; probabilities: Record<string, number> } | undefined;
-    if (stage2IsNeeded(s1.probability, gt.relation)) {
-      const s2 = await classifyStage2AsChoice(provider, pair);
-      out.totalCostUsd += s2.cost_usd;
+      const s1 = await classifyStage1AsNoul(provider, pair);
+      out.totalCostUsd += s1.cost_usd;
       out.judgmentCount++;
-      out.latenciesMs.push(s2.latency_ms);
-      stage2 = { relation: s2.relation, confidence: s2.confidence, probabilities: s2.probabilities };
-    }
+      out.latenciesMs.push(s1.latency_ms);
 
-    pushJudgments(
-      out,
-      judgeRecord({
-        pairId: rec.pair_id,
-        groundTruthRelation: gt.relation,
-        groundTruthStage1Pass: gt.stage1Pass,
-        stage1Probability: s1.probability,
-        stage2,
-      }),
-    );
+      let stage2:
+        | { relation: RelationLabel; confidence: number; probabilities: Record<string, number> }
+        | undefined;
+      if (stage2IsNeeded(s1.probability, gt.relation)) {
+        const s2 = await classifyStage2AsChoice(provider, pair);
+        out.totalCostUsd += s2.cost_usd;
+        out.judgmentCount++;
+        out.latenciesMs.push(s2.latency_ms);
+        stage2 = {
+          relation: s2.relation,
+          confidence: s2.confidence,
+          probabilities: s2.probabilities,
+        };
+      }
+
+      pushJudgments(
+        out,
+        judgeRecord({
+          pairId: rec.pair_id,
+          groundTruthRelation: gt.relation,
+          groundTruthStage1Pass: gt.stage1Pass,
+          stage1Probability: s1.probability,
+          stage2,
+        }),
+      );
+    } catch (err) {
+      recordFailure(out, rec.pair_id, err);
+    }
   }
   return out;
 }
@@ -267,6 +320,8 @@ function summarize(j: BackendJudgments) {
     cost_per_1k_usd: costPer1kUsd(j.totalCostUsd, j.judgmentCount),
     total_cost_usd: j.totalCostUsd,
     judgment_count: j.judgmentCount,
+    failure_count: j.failures.length,
+    failures: j.failures,
   };
 }
 
@@ -286,35 +341,58 @@ function toMarkdown(
   ];
   for (const [backend, s] of Object.entries(results)) {
     lines.push(`## ${backend}`, '', `> ${s.ground_truth_note}`, '');
-    lines.push(`- Judgments: ${s.judgment_count}, total cost: $${s.total_cost_usd.toFixed(4)}, cost/1k: $${s.cost_per_1k_usd.toFixed(2)}`);
+    lines.push(
+      `- Judgments: ${s.judgment_count}, total cost: $${s.total_cost_usd.toFixed(4)}, cost/1k: $${s.cost_per_1k_usd.toFixed(2)}`,
+    );
     lines.push(`- Latency p50/p95: ${s.latency.p50.toFixed(0)}ms / ${s.latency.p95.toFixed(0)}ms`);
+    lines.push(
+      `- Failed pairs (unparseable or errored, excluded from metrics): ${s.failure_count} of ${evaluatedPairs}`,
+    );
 
     lines.push('', '### Stage 1 (structural pre-filter)', '');
     lines.push(`- Calibration ECE (10 bins): ${s.stage1.calibration.ece.toFixed(4)}`);
     if (s.stage1.temperature_fit) {
       const t = s.stage1.temperature_fit;
-      lines.push(`- Temperature fit: T=${t.temperature.toFixed(2)} (NLL ${t.nllBefore.toFixed(3)} → ${t.nllAfter.toFixed(3)})`);
+      lines.push(
+        `- Temperature fit: T=${t.temperature.toFixed(2)} (NLL ${t.nllBefore.toFixed(3)} → ${t.nllAfter.toFixed(3)})`,
+      );
     }
-    lines.push('', '| threshold | recall | precision | tp | fp | fn | tn |', '|---|---|---|---|---|---|---|');
+    lines.push(
+      '',
+      '| threshold | recall | precision | tp | fp | fn | tn |',
+      '|---|---|---|---|---|---|---|',
+    );
     for (const t of s.stage1.threshold_sweep) {
-      lines.push(`| ${t.threshold} | ${t.recall.toFixed(3)} | ${t.precision.toFixed(3)} | ${t.tp} | ${t.fp} | ${t.fn} | ${t.tn} |`);
+      lines.push(
+        `| ${t.threshold} | ${t.recall.toFixed(3)} | ${t.precision.toFixed(3)} | ${t.tp} | ${t.fp} | ${t.fn} | ${t.tn} |`,
+      );
     }
 
-    lines.push('', '### Stage 2 — fixed cohort (every relation-labelled pair, independent of Stage 1)', '');
+    lines.push(
+      '',
+      '### Stage 2 — fixed cohort (every relation-labelled pair, independent of Stage 1)',
+      '',
+    );
     lines.push(`- Calibration ECE (10 bins): ${s.stage2_fixed_cohort.calibration.ece.toFixed(4)}`);
     if (s.stage2_fixed_cohort.temperature_fit) {
       const t = s.stage2_fixed_cohort.temperature_fit;
-      lines.push(`- Temperature fit: T=${t.temperature.toFixed(2)} (NLL ${t.nllBefore.toFixed(3)} → ${t.nllAfter.toFixed(3)})`);
+      lines.push(
+        `- Temperature fit: T=${t.temperature.toFixed(2)} (NLL ${t.nllBefore.toFixed(3)} → ${t.nllAfter.toFixed(3)})`,
+      );
     }
     lines.push('', '| label | support | precision | recall |', '|---|---|---|---|');
     for (const c of s.stage2_fixed_cohort.confusion.perClass) {
-      lines.push(`| ${c.label} | ${c.support} | ${c.precision.toFixed(3)} | ${c.recall.toFixed(3)} |`);
+      lines.push(
+        `| ${c.label} | ${c.support} | ${c.precision.toFixed(3)} | ${c.recall.toFixed(3)} |`,
+      );
     }
 
     lines.push('', '### End-to-end cascade (Stage-1 reject counts as a "none" prediction)', '');
     lines.push('| label | support | precision | recall |', '|---|---|---|---|');
     for (const c of s.cascade.confusion.perClass) {
-      lines.push(`| ${c.label} | ${c.support} | ${c.precision.toFixed(3)} | ${c.recall.toFixed(3)} |`);
+      lines.push(
+        `| ${c.label} | ${c.support} | ${c.precision.toFixed(3)} | ${c.recall.toFixed(3)} |`,
+      );
     }
     lines.push('');
   }
@@ -339,14 +417,21 @@ async function main() {
   // Finding B/9: intersect labels with the corpus BEFORE any provider call — a labels file
   // that matches nothing, or names a pair_id absent from the corpus, is refused outright
   // rather than silently producing zero-valued "independent" metrics.
-  const baseRecords = mode === 'labels' && labels ? intersectLabelsWithCorpus(allRecords, labels) : allRecords;
+  const baseRecords =
+    mode === 'labels' && labels ? intersectLabelsWithCorpus(allRecords, labels) : allRecords;
 
-  const labeledCount = baseRecords.filter((r) => resolveGroundTruth(r, mode, labels).relation !== null).length;
+  const labeledCount = baseRecords.filter(
+    (r) => resolveGroundTruth(r, mode, labels).relation !== null,
+  ).length;
   const warning = coverageWarning(labeledCount);
   if (warning) process.stderr.write(`${warning}\n`);
 
   // Finding A/1: whole corpus by default; a --limit stratifies by ground truth label first.
-  const records = selectRecords(baseRecords, args.limit, (r) => resolveGroundTruth(r, mode, labels).relation ?? 'unknown');
+  const records = selectRecords(
+    baseRecords,
+    args.limit,
+    (r) => resolveGroundTruth(r, mode, labels).relation ?? 'unknown',
+  );
 
   const results: Record<string, ReturnType<typeof summarize>> = {};
 
