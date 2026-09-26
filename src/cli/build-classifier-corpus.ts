@@ -18,14 +18,15 @@
  *                          [--out-dir=DIR]
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { loadEnvFile } from '../env.js';
 import { initDb, getPool, closeDb } from '../db.js';
 import { findCandidatePairs } from '../edges/candidate-pairs.js';
 import { pairHash } from '../edges/state.js';
 import type { EdgeRelation } from '../edges/types.js';
-import { assertSafeDataPath } from '../classifiers/eval/safe-write.js';
+import { writeFileSafely } from '../classifiers/eval/safe-write.js';
+import { roundRobinSample } from '../classifiers/eval/sampling.js';
 import type { CorpusRecord as SharedCorpusRecord, RawMemory } from '../classifiers/eval/corpus-schema.js';
 
 // The checkout holding .env and data/edges-state.jsonl. A git worktree has
@@ -66,20 +67,6 @@ function parseArgs(argv: string[]): CliArgs {
   };
 }
 
-/** Evenly interleaves items from each stratum until `total` is reached or all strata are exhausted. */
-function roundRobinSample<T>(strata: ReadonlyArray<T[]>, total: number): T[] {
-  const queues = strata.map((s) => [...s]);
-  const result: T[] = [];
-  let i = 0;
-  while (result.length < total && queues.some((q) => q.length > 0)) {
-    const q = queues[i % queues.length];
-    const item = q.shift();
-    if (item !== undefined) result.push(item);
-    i++;
-  }
-  return result;
-}
-
 function readRejectedHashes(edgeStateFile: string): Set<string> {
   const rejected = new Set<string>();
   if (!existsSync(edgeStateFile)) return rejected;
@@ -96,11 +83,8 @@ function readRejectedHashes(edgeStateFile: string): Set<string> {
   return rejected;
 }
 
-/** Canonicalizes + contains under data/ + checks git-ignore (in that order — fix #8), THEN writes. */
 function writeJsonl(path: string, records: ReadonlyArray<unknown>): void {
-  const canonical = assertSafeDataPath(path);
-  mkdirSync(dirname(canonical), { recursive: true });
-  writeFileSync(canonical, records.map((r) => JSON.stringify(r)).join('\n') + (records.length ? '\n' : ''), 'utf-8');
+  writeFileSafely(path, records.map((r) => JSON.stringify(r)).join('\n') + (records.length ? '\n' : ''));
 }
 
 async function main() {

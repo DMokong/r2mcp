@@ -85,10 +85,21 @@ describe('judgeRecord — Stage-1 calibration (fix #6)', () => {
     expect(wrongPass.stage1Calibration).toEqual({ confidence: 0.9, correct: false });
   });
 
+  it('populates stage1Temperature as a {yes,no} distribution against the true yes/no label (finding C)', () => {
+    const j = judgeRecord({ pairId: 'p5b', groundTruthRelation: null, groundTruthStage1Pass: true, stage1Probability: 0.7 });
+    expect(j.stage1Temperature?.trueLabel).toBe('yes');
+    expect(j.stage1Temperature?.probabilities.yes).toBeCloseTo(0.7, 10);
+    expect(j.stage1Temperature?.probabilities.no).toBeCloseTo(0.3, 10);
+
+    const rejected = judgeRecord({ pairId: 'p5c', groundTruthRelation: null, groundTruthStage1Pass: false, stage1Probability: 0.7 });
+    expect(rejected.stage1Temperature?.trueLabel).toBe('no');
+  });
+
   it('omits Stage-1 samples when Stage-1 ground truth is unknown', () => {
     const j = judgeRecord({ pairId: 'p7', groundTruthRelation: null, groundTruthStage1Pass: null, stage1Probability: 0.5 });
     expect(j.stage1Sample).toBeUndefined();
     expect(j.stage1Calibration).toBeUndefined();
+    expect(j.stage1Temperature).toBeUndefined();
   });
 });
 

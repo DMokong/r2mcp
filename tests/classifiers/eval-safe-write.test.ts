@@ -1,8 +1,14 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertSafeDataPath, canonicalize, CANONICAL_DATA_DIR, REPO_ROOT } from '../../src/classifiers/eval/safe-write.js';
+import {
+  assertSafeDataPath,
+  canonicalize,
+  writeFileSafely,
+  CANONICAL_DATA_DIR,
+  REPO_ROOT,
+} from '../../src/classifiers/eval/safe-write.js';
 
 const cleanup: string[] = [];
 afterEach(() => {
@@ -60,5 +66,45 @@ describe('assertSafeDataPath (fix #8)', () => {
   it("resolves under the real repo's data/ directory, not some arbitrary root", () => {
     expect(CANONICAL_DATA_DIR).toBe(join(REPO_ROOT, 'data'));
     expect(existsSync(REPO_ROOT)).toBe(true);
+  });
+});
+
+describe('writeFileSafely (round 3, finding 8/E)', () => {
+  it('creates a new file (exclusive) and writes the given content', () => {
+    const target = join(CANONICAL_DATA_DIR, 'classifier-eval', `wfs-new-${process.pid}.jsonl`);
+    cleanup.push(target);
+    const written = writeFileSafely(target, 'hello\n');
+    expect(readFileSync(written, 'utf-8')).toBe('hello\n');
+  });
+
+  it('overwrites an existing plain file on a second call (the regenerate-corpus workflow)', () => {
+    const target = join(CANONICAL_DATA_DIR, 'classifier-eval', `wfs-overwrite-${process.pid}.jsonl`);
+    cleanup.push(target);
+    writeFileSafely(target, 'first\n');
+    writeFileSafely(target, 'second\n');
+    expect(readFileSync(target, 'utf-8')).toBe('second\n');
+  });
+
+  it('refuses when the destination file itself is already a symlink', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wfs-outside-'));
+    cleanup.push(dir);
+    const decoyTarget = join(dir, 'decoy.txt');
+    writeFileSync(decoyTarget, 'private\n', 'utf-8');
+    const target = join(CANONICAL_DATA_DIR, 'classifier-eval', `wfs-symlinked-file-${process.pid}.jsonl`);
+    symlinkSync(decoyTarget, target);
+    cleanup.push(target);
+    expect(() => writeFileSafely(target, 'new content\n')).toThrow(/is a symlink/);
+    // And the decoy target must be untouched — the write never happened.
+    expect(readFileSync(decoyTarget, 'utf-8')).toBe('private\n');
+  });
+
+  it('refuses when the destination directory itself is already a symlink', () => {
+    const outsideDir = mkdtempSync(join(tmpdir(), 'wfs-outside-dir-'));
+    cleanup.push(outsideDir);
+    const linkDir = join(CANONICAL_DATA_DIR, 'classifier-eval', `wfs-symlinked-dir-${process.pid}`);
+    symlinkSync(outsideDir, linkDir);
+    cleanup.push(linkDir);
+    expect(() => writeFileSafely(join(linkDir, 'file.jsonl'), 'x')).toThrow(/is a symlink/);
+    expect(existsSync(join(outsideDir, 'file.jsonl'))).toBe(false);
   });
 });

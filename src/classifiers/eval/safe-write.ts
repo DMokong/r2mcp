@@ -8,7 +8,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -67,5 +67,50 @@ export function assertSafeDataPath(targetPath: string): string {
     throw err;
   }
 
+  return canonical;
+}
+
+/**
+ * Refuses if `path` already exists AND is a symlink (round 3, finding 8/E).
+ * A no-op if `path` doesn't exist — nothing planted there yet to refuse.
+ */
+function assertNotSymlink(path: string, label: string): void {
+  let stat;
+  try {
+    stat = lstatSync(path);
+  } catch {
+    return;
+  }
+  if (stat.isSymbolicLink()) {
+    throw new Error(`Refusing to write: ${label} (${path}) is a symlink, not a plain ${label}.`);
+  }
+}
+
+/**
+ * Writes `content` to `targetPath` under data/, combining every write-path
+ * guard the harness has needed:
+ *   - assertSafeDataPath (round 2, fix #8): canonicalize, contain under the
+ *     repo's data/ dir, git check-ignore.
+ *   - round 3, finding 8/E (partial): lstat the destination file itself and
+ *     its immediate parent directory BEFORE writing, on the caller's
+ *     original (pre-canonicalize) path, and refuse if either is already a
+ *     symlink — a symlink planted at the exact destination isn't "resolved
+ *     through" like a merely-in-the-way ancestor (e.g. macOS's /tmp), it's
+ *     refused outright. Then use an exclusive ('wx') create for a file that
+ *     doesn't exist yet, so nothing can be silently overwritten through a
+ *     symlink that appears in the gap between this check and the write.
+ *     Explicitly OUT of scope: a hostile process racing to swap the path
+ *     mid-write. The threat model here is accidental leakage, not a local
+ *     attacker — see the round-3 brief.
+ */
+export function writeFileSafely(targetPath: string, content: string): string {
+  const original = resolve(targetPath);
+  assertNotSymlink(dirname(original), 'destination directory');
+  assertNotSymlink(original, 'destination file');
+
+  const canonical = assertSafeDataPath(targetPath);
+  mkdirSync(dirname(canonical), { recursive: true });
+  const exists = existsSync(canonical);
+  writeFileSync(canonical, content, { encoding: 'utf-8', flag: exists ? 'w' : 'wx' });
   return canonical;
 }

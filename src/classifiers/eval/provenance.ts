@@ -4,9 +4,16 @@
  * the same path would be silently trusted. Provenance requires the resolved
  * path's REAL path (symlinks resolved) to be the fixture's real path, AND
  * its content to match a sha256 pinned in code. Anything else is db-sample.
+ *
+ * Round 3 finding D: the caller must read the corpus file exactly once and
+ * pass that same buffer here — hashing a fresh re-read (or worse, hashing
+ * one read and parsing another) leaves a gap where the two reads see
+ * different bytes. determineCorpusSource takes the buffer directly and never
+ * reads corpusPath's content itself; realpathSync is a metadata-only stat,
+ * not a content read, so it carries no such gap.
  */
 
-import { readFileSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import type { CorpusSource } from './egress-guard.js';
@@ -24,17 +31,15 @@ export const PUBLIC_FIXTURE_PATH = fileURLToPath(
  */
 export const PUBLIC_FIXTURE_SHA256 = '0fc1f9a2ada58b5c9ed496ec217695b333c1d2299c46712ef39d4ad144c97513';
 
-function sha256(path: string): string {
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
-}
-
 /**
- * Resolves corpus provenance. Only the exact, unmodified public fixture (by
- * real path AND content hash) is 'public-fixture' — every other corpus,
- * including a tampered file sitting at the fixture's own path or a symlink
- * pointing elsewhere, is 'db-sample'.
+ * Resolves corpus provenance from a buffer the caller already read from
+ * `corpusPath` — this function performs no content read of its own. Only the
+ * exact, unmodified public fixture (by real path AND `buffer`'s content hash)
+ * is 'public-fixture' — every other corpus, including a tampered file
+ * sitting at the fixture's own path or a symlink pointing elsewhere, is
+ * 'db-sample'.
  */
-export function determineCorpusSource(corpusPath: string): CorpusSource {
+export function determineCorpusSource(corpusPath: string, buffer: Buffer): CorpusSource {
   let real: string;
   try {
     real = realpathSync(corpusPath);
@@ -51,10 +56,11 @@ export function determineCorpusSource(corpusPath: string): CorpusSource {
 
   if (real !== fixtureReal) return 'db-sample';
 
-  if (sha256(real) !== PUBLIC_FIXTURE_SHA256) {
+  const hash = createHash('sha256').update(buffer).digest('hex');
+  if (hash !== PUBLIC_FIXTURE_SHA256) {
     throw new Error(
-      `${corpusPath} resolves to the public fixture's path but its content does not match the pinned ` +
-        `PUBLIC_FIXTURE_SHA256 in src/classifiers/eval/provenance.ts. If you intentionally edited ` +
+      `${corpusPath} resolves to the public fixture's path but the bytes read from it do not match the ` +
+        `pinned PUBLIC_FIXTURE_SHA256 in src/classifiers/eval/provenance.ts. If you intentionally edited ` +
         `tests/fixtures/edge-corpus.jsonl, recompute the hash and update the pin.`,
     );
   }

@@ -15,6 +15,9 @@
  *     noul probability p becomes a two-way distribution {yes: p, no: 1-p};
  *     ECE is computed against max(p, 1-p) vs. whether that argmax matched
  *     ground truth, exactly like a Stage-2 top-1 calibration sample.
+ *
+ * Round 3 finding C adds a Stage-1 temperature fit on that same {yes, no}
+ * distribution, fit independently of Stage 2's.
  */
 
 import type {
@@ -47,6 +50,7 @@ export interface JudgeRecordInput {
 export interface RecordJudgments {
   stage1Sample?: Stage1JudgmentSample;
   stage1Calibration?: CalibrationSample;
+  stage1Temperature?: TemperatureFitSample;
   /** Fixed-cohort: Stage 2 scored on its own, independent of what Stage 1 decided. */
   stage2Sample?: RelationJudgmentSample;
   stage2Calibration?: CalibrationSample;
@@ -69,6 +73,10 @@ export function judgeRecord(input: JudgeRecordInput): RecordJudgments {
     out.stage1Calibration = {
       confidence: Math.max(input.stage1Probability, 1 - input.stage1Probability),
       correct: predictedPass === input.groundTruthStage1Pass,
+    };
+    out.stage1Temperature = {
+      probabilities: { yes: input.stage1Probability, no: 1 - input.stage1Probability },
+      trueLabel: input.groundTruthStage1Pass ? 'yes' : 'no',
     };
   }
 
@@ -97,6 +105,7 @@ export function judgeRecord(input: JudgeRecordInput): RecordJudgments {
 export interface JudgmentAccumulator {
   stage1: Stage1JudgmentSample[];
   stage1Calibration: CalibrationSample[];
+  stage1Temperature: TemperatureFitSample[];
   stage2: RelationJudgmentSample[];
   stage2Calibration: CalibrationSample[];
   stage2Temperature: TemperatureFitSample[];
@@ -104,12 +113,21 @@ export interface JudgmentAccumulator {
 }
 
 export function emptyAccumulator(): JudgmentAccumulator {
-  return { stage1: [], stage1Calibration: [], stage2: [], stage2Calibration: [], stage2Temperature: [], cascade: [] };
+  return {
+    stage1: [],
+    stage1Calibration: [],
+    stage1Temperature: [],
+    stage2: [],
+    stage2Calibration: [],
+    stage2Temperature: [],
+    cascade: [],
+  };
 }
 
 export function pushJudgments(acc: JudgmentAccumulator, j: RecordJudgments): void {
   if (j.stage1Sample) acc.stage1.push(j.stage1Sample);
   if (j.stage1Calibration) acc.stage1Calibration.push(j.stage1Calibration);
+  if (j.stage1Temperature) acc.stage1Temperature.push(j.stage1Temperature);
   if (j.stage2Sample) acc.stage2.push(j.stage2Sample);
   if (j.stage2Calibration) acc.stage2Calibration.push(j.stage2Calibration);
   if (j.stage2Temperature) acc.stage2Temperature.push(j.stage2Temperature);

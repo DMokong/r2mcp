@@ -11,8 +11,11 @@
  * rejections are the pipeline's own past output, not independent labels):
  *   - the public fixture's expected_relation is hand-labelled — independent.
  *   - a DB-sampled corpus scored with --labels=PATH uses ONLY those human
- *     spot-check labels as ground truth (unlabelled pairs are excluded, not
- *     guessed).
+ *     spot-check labels as ground truth, intersected with the corpus BEFORE
+ *     any provider call (round 3, finding B/9) — unlabelled pairs are
+ *     excluded, not guessed, and a labels file with zero matches or a
+ *     pair_id absent from the corpus is refused rather than silently
+ *     producing zero-valued "independent" metrics.
  *   - a DB-sampled corpus with no --labels still runs, but is reported as
  *     "agreement with the current pipeline", explicitly NOT accuracy.
  *
@@ -20,11 +23,15 @@
  * a Stage-2 fixed cohort (every relation-labelled pair, independent of what
  * Stage 1 decided), and the end-to-end cascade (a Stage-1 reject counts as a
  * 'none' prediction). Stage-1 and Stage-2 calibration/temperature are
- * reported separately (fix #6).
+ * reported separately (fix #6, and round 3 finding C for Stage-1's own fit).
  *
  * Usage:
  *   npm run eval:classifiers -- [--corpus=PATH] [--backends=llm-path,fake]
  *                               [--limit=N] [--labels=PATH]
+ *   With no --limit, the WHOLE corpus is evaluated (round 3, finding A/1 — a
+ *   plain prefix slice of a default limit never saw a 'none' pair). With
+ *   --limit, records are stratified by ground truth label first so every
+ *   relation, and 'none', gets a fair share.
  *   Corpus provenance is never a flag (fix #3): only the committed public
  *   fixture, verified by real path AND a pinned content hash, is 'public-fixture'.
  *   Everything else is 'db-sample'.
@@ -33,8 +40,8 @@
  * see src/classifiers/eval/egress-guard.ts. This is a hard rule, not advisory.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { loadEnvFile } from '../env.js';
 import { selectProvider, ProviderUnavailableError } from '../providers/index.js';
 import { stage1HaikuFilter } from '../edges/stage1-haiku.js';
@@ -45,13 +52,14 @@ import { createFakeClassifierProvider } from '../classifiers/eval/fake-provider.
 import { LLMEnumClassifier, OpenJevClassifier, TypeSafeClassifier } from '../classifiers/index.js';
 import { assertEgressAllowed, type CorpusSource } from '../classifiers/eval/egress-guard.js';
 import { determineCorpusSource } from '../classifiers/eval/provenance.js';
-import { assertSafeDataPath } from '../classifiers/eval/safe-write.js';
+import { writeFileSafely } from '../classifiers/eval/safe-write.js';
 import {
   normalizeDbRecord,
   normalizeFixtureRecord,
   parseHumanLabels,
   type CorpusRecord,
 } from '../classifiers/eval/corpus-schema.js';
+import { coverageWarning, intersectLabelsWithCorpus, selectRecords } from '../classifiers/eval/corpus-selection.js';
 import {
   emptyAccumulator,
   judgeRecord,
@@ -83,7 +91,8 @@ type GroundTruthMode = 'fixture' | 'labels' | 'pipeline';
 interface CliArgs {
   corpusPath: string;
   backends: string[];
-  limit: number;
+  /** undefined = evaluate the whole corpus (round 3, finding A/1). */
+  limit: number | undefined;
   labelsPath?: string;
 }
 
@@ -94,16 +103,16 @@ function flagValue(argv: string[], name: string): string | undefined {
 function parseArgs(argv: string[]): CliArgs {
   const corpusPath = flagValue(argv, '--corpus') ?? 'data/classifier-eval/corpus.jsonl';
   const backends = (flagValue(argv, '--backends') ?? 'llm-path,fake').split(',').map((b) => b.trim());
-  const limit = Number(flagValue(argv, '--limit') ?? '10');
+  const limitRaw = flagValue(argv, '--limit');
+  const limit = limitRaw !== undefined ? Number(limitRaw) : undefined;
   const labelsPath = flagValue(argv, '--labels');
   return { corpusPath, backends, limit, labelsPath };
 }
 
-function loadCorpus(path: string, corpusSource: CorpusSource): CorpusRecord[] {
-  if (!existsSync(path)) {
-    throw new Error(`Corpus not found: ${path}. Run 'npm run eval:corpus' first.`);
-  }
-  const lines = readFileSync(path, 'utf-8')
+/** Finding D: parses the SAME buffer determineCorpusSource hashed — never reopens the path. */
+function loadCorpus(buffer: Buffer, corpusSource: CorpusSource): CorpusRecord[] {
+  const lines = buffer
+    .toString('utf-8')
     .split('\n')
     .filter((l) => l.trim());
   return lines.map((line, i) => {
@@ -244,6 +253,7 @@ function summarize(j: BackendJudgments) {
     stage1: {
       threshold_sweep: sweepStage1Thresholds(j.stage1, thresholds),
       calibration: expectedCalibrationError(j.stage1Calibration, 10),
+      temperature_fit: j.stage1Temperature.length > 0 ? fitTemperature(j.stage1Temperature) : null,
     },
     stage2_fixed_cohort: {
       confusion: relationConfusionMatrix(j.stage2, STAGE2_RELATIONS),
@@ -260,8 +270,20 @@ function summarize(j: BackendJudgments) {
   };
 }
 
-function toMarkdown(timestamp: string, corpusPath: string, results: Record<string, ReturnType<typeof summarize>>): string {
-  const lines: string[] = [`# Classifier eval — ${timestamp}`, '', `Corpus: \`${corpusPath}\``, ''];
+function toMarkdown(
+  timestamp: string,
+  corpusPath: string,
+  evaluatedPairs: number,
+  labeledPairs: number,
+  results: Record<string, ReturnType<typeof summarize>>,
+): string {
+  const lines: string[] = [
+    `# Classifier eval — ${timestamp}`,
+    '',
+    `Corpus: \`${corpusPath}\``,
+    `Evaluated ${evaluatedPairs} pairs (${labeledPairs} with known ground truth).`,
+    '',
+  ];
   for (const [backend, s] of Object.entries(results)) {
     lines.push(`## ${backend}`, '', `> ${s.ground_truth_note}`, '');
     lines.push(`- Judgments: ${s.judgment_count}, total cost: $${s.total_cost_usd.toFixed(4)}, cost/1k: $${s.cost_per_1k_usd.toFixed(2)}`);
@@ -269,6 +291,10 @@ function toMarkdown(timestamp: string, corpusPath: string, results: Record<strin
 
     lines.push('', '### Stage 1 (structural pre-filter)', '');
     lines.push(`- Calibration ECE (10 bins): ${s.stage1.calibration.ece.toFixed(4)}`);
+    if (s.stage1.temperature_fit) {
+      const t = s.stage1.temperature_fit;
+      lines.push(`- Temperature fit: T=${t.temperature.toFixed(2)} (NLL ${t.nllBefore.toFixed(3)} → ${t.nllAfter.toFixed(3)})`);
+    }
     lines.push('', '| threshold | recall | precision | tp | fp | fn | tn |', '|---|---|---|---|---|---|---|');
     for (const t of s.stage1.threshold_sweep) {
       lines.push(`| ${t.threshold} | ${t.recall.toFixed(3)} | ${t.precision.toFixed(3)} | ${t.tp} | ${t.fp} | ${t.fn} | ${t.tn} |`);
@@ -298,12 +324,29 @@ function toMarkdown(timestamp: string, corpusPath: string, results: Record<strin
 async function main() {
   loadEnvFile(process.env.R2MCP_ENV_FILE ?? '.env');
   const args = parseArgs(process.argv.slice(2));
-  const corpusSource = determineCorpusSource(args.corpusPath);
+
+  if (!existsSync(args.corpusPath)) {
+    throw new Error(`Corpus not found: ${args.corpusPath}. Run 'npm run eval:corpus' first.`);
+  }
+  // Finding D: read the corpus exactly once; hash and parse THIS buffer, never the path again.
+  const corpusBuffer = readFileSync(args.corpusPath);
+  const corpusSource = determineCorpusSource(args.corpusPath, corpusBuffer);
   const mode = groundTruthMode(corpusSource, args.labelsPath);
   const labels = args.labelsPath ? parseHumanLabels(readFileSync(args.labelsPath, 'utf-8')) : null;
 
-  const allRecords = loadCorpus(args.corpusPath, corpusSource);
-  const records = allRecords.slice(0, args.limit);
+  const allRecords = loadCorpus(corpusBuffer, corpusSource);
+
+  // Finding B/9: intersect labels with the corpus BEFORE any provider call — a labels file
+  // that matches nothing, or names a pair_id absent from the corpus, is refused outright
+  // rather than silently producing zero-valued "independent" metrics.
+  const baseRecords = mode === 'labels' && labels ? intersectLabelsWithCorpus(allRecords, labels) : allRecords;
+
+  const labeledCount = baseRecords.filter((r) => resolveGroundTruth(r, mode, labels).relation !== null).length;
+  const warning = coverageWarning(labeledCount);
+  if (warning) process.stderr.write(`${warning}\n`);
+
+  // Finding A/1: whole corpus by default; a --limit stratifies by ground truth label first.
+  const records = selectRecords(baseRecords, args.limit, (r) => resolveGroundTruth(r, mode, labels).relation ?? 'unknown');
 
   const results: Record<string, ReturnType<typeof summarize>> = {};
 
@@ -327,13 +370,36 @@ async function main() {
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const outDir = assertSafeDataPath(join('data', 'classifier-eval', 'results', timestamp));
-  mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, 'results.json'), JSON.stringify({ timestamp, corpus: args.corpusPath, limit: args.limit, ground_truth_mode: mode, results }, null, 2), 'utf-8');
-  writeFileSync(join(outDir, 'summary.md'), toMarkdown(timestamp, args.corpusPath, results), 'utf-8');
+  const payload = {
+    timestamp,
+    corpus: args.corpusPath,
+    limit: args.limit ?? null,
+    ground_truth_mode: mode,
+    labeled_pairs: labeledCount,
+    evaluated_pairs: records.length,
+    results,
+  };
+  const resultsPath = writeFileSafely(
+    join('data', 'classifier-eval', 'results', timestamp, 'results.json'),
+    JSON.stringify(payload, null, 2),
+  );
+  writeFileSafely(
+    join('data', 'classifier-eval', 'results', timestamp, 'summary.md'),
+    toMarkdown(timestamp, args.corpusPath, records.length, labeledCount, results),
+  );
 
   process.stdout.write(
-    JSON.stringify({ evaluated_pairs: records.length, backends: args.backends, ground_truth_mode: mode, out_dir: outDir }, null, 2) + '\n',
+    JSON.stringify(
+      {
+        evaluated_pairs: records.length,
+        labeled_pairs: labeledCount,
+        backends: args.backends,
+        ground_truth_mode: mode,
+        out_dir: dirname(resultsPath),
+      },
+      null,
+      2,
+    ) + '\n',
   );
 }
 
