@@ -23,6 +23,8 @@
     "entities:extract": "tsx src/cli/extract-entities.ts",
     "compile-wiki": "tsx src/cli/compile-wiki.ts",
     "lint:memory": "tsx src/cli/lint-memory.ts",
+    "eval:corpus": "tsx src/cli/build-classifier-corpus.ts",
+    "eval:classifiers": "tsx src/cli/eval-classifiers.ts",
     "migrate": "tsx src/cli/migrate.ts",
     "db:export": "tsx src/cli/export-jsonl.ts",
     "db:import": "tsx src/cli/import-jsonl.ts",
