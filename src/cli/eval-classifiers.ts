@@ -89,6 +89,8 @@ import {
 const CLASSIFIER_REGISTRY: Record<string, (source: CorpusSource) => Promise<ClassifierProvider>> = {
   fake: async () => createFakeClassifierProvider(),
   openjev: async () => new OpenJevClassifier(),
+  'openjev-laya': async () => new OpenJevClassifier({ model: 'laya-1.0' }),
+  'openjev-verdict': async () => new OpenJevClassifier({ model: 'verdict-1.4' }),
   // Bound to the corpus provenance: construction throws for anything but a public source.
   typesafe: async (source) => new TypeSafeClassifier({ scope: source }),
   'llm-enum': async () => new LLMEnumClassifier(await selectProvider()),

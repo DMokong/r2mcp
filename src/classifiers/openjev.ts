@@ -7,6 +7,9 @@ const LOCAL_API_KEY_PLACEHOLDER = 'openjev-local';
 
 export interface OpenJevClassifierOptions {
   baseURL?: string;
+  /** Default model when a request names none (e.g. 'laya-1.0', 'verdict-1.4').
+   * Falls back to R2MCP_OPENJEV_MODEL, then the server's own default. */
+  model?: string;
   env?: NodeJS.ProcessEnv;
   fetchFn?: Fetch;
 }
@@ -17,9 +20,11 @@ export class OpenJevClassifier implements ClassifierProvider {
   readonly concurrencyLimit = 10;
 
   private readonly client: TypeSafeClient;
+  private readonly model: string | undefined;
 
   constructor(options: OpenJevClassifierOptions = {}) {
     const env = options.env ?? process.env;
+    this.model = nonBlank(options.model) ?? nonBlank(env.R2MCP_OPENJEV_MODEL);
     const baseURL =
       nonBlank(options.baseURL) ?? nonBlank(env.R2MCP_OPENJEV_URL) ?? DEFAULT_OPENJEV_URL;
 
@@ -32,7 +37,10 @@ export class OpenJevClassifier implements ClassifierProvider {
 
   async classify(request: ClassifyRequest): Promise<ClassifyResponse> {
     const startedAt = Date.now();
-    const result = await this.client.systemOne(toSystemOneRequest(request));
+    const model = request.model ?? this.model;
+    const result = await this.client.systemOne(
+      toSystemOneRequest(model === undefined ? request : { ...request, model }),
+    );
 
     return fromSystemOneResult(result, {
       latencyMs: Date.now() - startedAt,

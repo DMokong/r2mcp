@@ -48,4 +48,19 @@ describe('OpenJevClassifier', () => {
     });
     expect(fetchFn.mock.calls[0][0]).toBe('http://explicit.test:9000/v1/systemone');
   });
+
+  it('sends the configured default model unless the request names one', async () => {
+    const models: unknown[] = [];
+    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => {
+      models.push(JSON.parse(String(init?.body)).model);
+      return resultResponse();
+    });
+    const questions = { q: { type: 'noul' as const, instructions: 'Related?' } };
+    const classifier = new OpenJevClassifier({ env: {}, fetchFn, model: 'verdict-1.4' });
+    await classifier.classify({ state: 'Local fixture text', questions });
+    await classifier.classify({ state: 'Local fixture text', questions, model: 'laya-1.0' });
+    const fromEnv = new OpenJevClassifier({ env: { R2MCP_OPENJEV_MODEL: 'laya-1.0' }, fetchFn });
+    await fromEnv.classify({ state: 'Local fixture text', questions });
+    expect(models).toEqual(['verdict-1.4', 'laya-1.0', 'laya-1.0']);
+  });
 });
