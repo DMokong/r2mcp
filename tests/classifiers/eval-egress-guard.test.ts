@@ -37,4 +37,15 @@ describe('assertEgressAllowed', () => {
       expect((err as Error).message).toContain('db-sample');
     }
   });
+
+  it('follows R2MCP_REMOTE_CLASSIFIER_SCOPES: db-sample only when listed explicitly', () => {
+    const hosted = { name: 'typesafe', egress: 'remote' as const };
+    expect(() => assertEgressAllowed(hosted, 'db-sample', {})).toThrow(EgressGuardError);
+    expect(() =>
+      assertEgressAllowed(hosted, 'db-sample', { R2MCP_REMOTE_CLASSIFIER_SCOPES: 'ai-landscape,db-sample' }),
+    ).not.toThrow();
+    expect(() =>
+      assertEgressAllowed(hosted, 'ai-landscape', { R2MCP_REMOTE_CLASSIFIER_SCOPES: 'db-sample' }),
+    ).toThrow(EgressGuardError);
+  });
 });
