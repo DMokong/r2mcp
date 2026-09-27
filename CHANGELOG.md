@@ -5,6 +5,32 @@ entries reference the internal spec numbers that shipped them.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-27
+
+### Added
+
+- **Classifier primitive** (trk-7mx): `ClassifierProvider` — bounded question
+  + enumerated answers + probabilities, never prose — separate from
+  `LLMProvider.complete()`, shaped like TypeSafe's System One wire API.
+  Backends: `typesafe` (hosted Jev; remote egress, refused at construction
+  unless the scope is listed in `R2MCP_REMOTE_CLASSIFIER_SCOPES`, default
+  `ai-landscape,public-fixture`), `openjev` (a local OpenJev server,
+  `R2MCP_OPENJEV_URL` / `R2MCP_OPENJEV_MODEL`), and `llm-enum` (any
+  `LLMProvider` forced onto the enum). New dependency: `@typesafe-ai/sdk`.
+- **Stage-1 shadow trial** (trk-7mx): `R2MCP_EDGE_STAGE1_SHADOW=typesafe|openjev`
+  scores every `classify-edges` Stage-1 pair with that classifier as well and
+  logs ids + scores to `data/edges-shadow.jsonl`; decisions are unchanged and
+  the shadow can never fail the run. Pairs touching health- or
+  finance-related memories (topic, section, or text) are never sent to a
+  remote classifier. `npm run edges:shadow-report` summarises agreement and
+  lists candidate missed edges.
+- **Classifier shadow-eval harness** (trk-7mx.1): `eval:corpus`,
+  `eval:classifiers` — schema-validated corpora, hash-pinned public fixture,
+  human-label-only accuracy, Stage-1 AUC / threshold sweep / calibration,
+  fixed-cohort Stage-2 and cascade metrics, per-pair failure accounting.
+- **Remote profile** (spec-059, previously unreleased on main): the 5-tool
+  memory profile over streamable HTTP with MCP resource-server auth.
+
 ## [0.4.1] — 2026-09-27
 
 ### Fixed

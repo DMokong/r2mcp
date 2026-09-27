@@ -1,7 +1,7 @@
 {
   "name": "r2mcp",
-  "version": "0.4.1",
-  "description": "Persistent semantic memory layer for Claude Code \u2014 PostgreSQL + pgvector + OpenRouter embeddings",
+  "version": "0.5.0",
+  "description": "Persistent semantic memory layer for Claude Code — PostgreSQL + pgvector + OpenRouter embeddings",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
