@@ -8,6 +8,8 @@ import {
   costPer1kUsd,
   type Stage1JudgmentSample,
   type RelationJudgmentSample,
+  stage1RocAuc,
+  stage1PassRate,
 } from '../../src/classifiers/eval-metrics.js';
 
 describe('sweepStage1Thresholds', () => {
@@ -162,5 +164,22 @@ describe('costPer1kUsd', () => {
 
   it('returns 0 when there are no judgments', () => {
     expect(costPer1kUsd(5, 0)).toBe(0);
+  });
+});
+
+describe('stage1RocAuc / stage1PassRate', () => {
+  const s = (pass: boolean, p: number) => ({ pairId: String(p), groundTruthPass: pass, predictedProbability: p });
+  it('is 1 for perfect ranking, 0.5 for a pass-everything filter, 0 when inverted', () => {
+    expect(stage1RocAuc([s(true, 0.9), s(true, 0.8), s(false, 0.2)])).toBe(1);
+    expect(stage1RocAuc([s(true, 0.55), s(true, 0.55), s(false, 0.55)])).toBe(0.5);
+    expect(stage1RocAuc([s(true, 0.1), s(false, 0.9)])).toBe(0);
+  });
+  it('hand-checked mixed case: 3 of 4 pos/neg pairs ordered correctly', () => {
+    // pos {0.9, 0.4}, neg {0.6, 0.2}: 0.9>0.6, 0.9>0.2, 0.4<0.6, 0.4>0.2 => 3/4
+    expect(stage1RocAuc([s(true, 0.9), s(true, 0.4), s(false, 0.6), s(false, 0.2)])).toBe(0.75);
+  });
+  it('is null when a class is missing; pass rate counts p >= threshold', () => {
+    expect(stage1RocAuc([s(true, 0.9)])).toBeNull();
+    expect(stage1PassRate([s(true, 0.5), s(false, 0.49), s(false, 0.7)], 0.5)).toBeCloseTo(2 / 3);
   });
 });
