@@ -14,13 +14,18 @@ export interface Stage1Result {
   cost_usd: number;
 }
 
-const STAGE1_SYSTEM = `You are a filter that decides whether two memories MIGHT have a meaningful structural relation worth deeper analysis.
+// trk-7mx.3: recall-biased. The previous wording ("say NO if they describe
+// distinct, non-conflicting things despite sharing topic tags") rejected 41%
+// of pairs a human labelled as related. A miss here is permanent (Stage 2
+// never sees the pair); a false pass only costs one Stage-2 call, which can
+// still answer "none".
+const STAGE1_SYSTEM = `You are a cheap pre-filter in front of a careful relation classifier. Decide whether two memories MIGHT be related closely enough to be worth that deeper look.
 
 Reply with one line in this exact format:
   YES — <brief reason>
   NO — <brief reason>
 
-Say YES if the two memories appear to make claims about overlapping things — e.g., they recommend or contradict each other on the same subject, one is a refinement of the other, or one depends on the other. Say NO if they describe distinct, non-conflicting things despite sharing topic tags. Reply with ONLY the single line — no other text.`;
+Say YES if they could plausibly be connected in any of these ways: one supports, contradicts, updates, replaces, refines, or depends on the other, or both are about the same specific subject, project, decision, or tool. Say NO only when they are clearly about different things. When unsure, say YES — the next stage makes the exact call and can still reject the pair. Reply with ONLY the single line — no other text.`;
 
 const STAGE1_MAX_OUTPUT_TOKENS = 64;
 
