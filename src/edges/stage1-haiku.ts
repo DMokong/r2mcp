@@ -1,6 +1,7 @@
 import type { LLMProvider } from '../providers/types.js';
 import { withLLMCallSpan } from '../telemetry.js';
 import { resolveModelTier } from '../model-tier.js';
+import { completeAndParse } from './parse-retry.js';
 
 export interface PairForFilter {
   from: { id: string; content: string };
@@ -24,10 +25,15 @@ Say YES if the two memories appear to make claims about overlapping things — e
 const STAGE1_MAX_OUTPUT_TOKENS = 64;
 
 export function parseStage1Response(text: string): { pass: boolean; comment: string } {
-  const trimmed = text.trim();
-  const match = trimmed.match(/^(YES|NO)(?:\s*[—\-:]\s*(.*))?$/i);
+  // trk-6qd: models often wrap the verdict (multi-line reasons, **bold**, a
+  // leading "Answer:"). Only the leading YES/NO token decides; everything
+  // after it, across lines, is the comment.
+  const flat = text.replace(/\s+/g, ' ').trim();
+  const match = flat.match(
+    /^[*_`"'\s]*(?:answer\s*:\s*)?[*_`"'\s]*(YES|NO)\b[*_`"']*\s*(?:[—\-:.,]\s*)?(.*)$/i,
+  );
   if (!match) {
-    throw new Error(`Stage 1 response not parseable: ${JSON.stringify(text)}`);
+    throw new Error(`Stage 1 response not parseable: ${JSON.stringify(text).slice(0, 200)}`);
   }
   return {
     pass: match[1].toUpperCase() === 'YES',
@@ -46,17 +52,17 @@ export async function stage1HaikuFilter(
   // and the request always report the same model. The filename still says
   // "haiku" for import stability; the shipped default is now sonnet.
   const model = resolveModelTier('classify-edges-stage1');
-  const result = await withLLMCallSpan(
-    'memory.classify_edges.call',
-    { provider: provider.name, model },
+  const { parsed, cost_usd } = await completeAndParse(
     () =>
-      provider.complete({
-        model,
-        system: STAGE1_SYSTEM,
-        prompt: userPrompt,
-        max_tokens: STAGE1_MAX_OUTPUT_TOKENS,
-      }),
+      withLLMCallSpan('memory.classify_edges.call', { provider: provider.name, model }, () =>
+        provider.complete({
+          model,
+          system: STAGE1_SYSTEM,
+          prompt: userPrompt,
+          max_tokens: STAGE1_MAX_OUTPUT_TOKENS,
+        }),
+      ),
+    parseStage1Response,
   );
-  const parsed = parseStage1Response(result.response);
-  return { pass: parsed.pass, comment: parsed.comment, cost_usd: result.cost_usd };
+  return { pass: parsed.pass, comment: parsed.comment, cost_usd };
 }
