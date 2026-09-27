@@ -5,6 +5,33 @@ entries reference the internal spec numbers that shipped them.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-27
+
+### Fixed
+
+- **Edge classification no longer dies on one bad LLM reply** (trk-6qd). A
+  single unparseable Stage-2 reply threw out of `classify-edges` and aborted
+  the whole run — every nightly run in production was failing this way (e.g.
+  a rationale containing unescaped quotes). Stage 1 now reads only the leading
+  YES/NO token (multi-line reasons, `**bold**`, an `Answer:` prefix are fine);
+  Stage 2's output budget is 512 tokens (was 256), a reply that breaks after
+  `relation` and `confidence` is salvaged with its rationale marked
+  `[truncated]`, and both stages retry once on a reply with no usable fields.
+
+### Changed
+
+- **Recall-biased Stage-1 filter** (trk-7mx.3). A Stage-1 miss is permanent;
+  a false pass costs one Stage-2 call that can still answer `none`. Measured
+  live against 50 hand-labelled pairs: recall 0.59 → 0.69 at unchanged
+  precision 1.00; on the public 42-pair fixture 0.77 → 0.88 (AUC 0.94).
+
+## [0.4.0] — 2026-08-09
+
+### Changed
+
+- **Env-resolvable model tiers** (claw-x1mg): call sites request a purpose,
+  not a model; see `src/model-tier.ts`.
+
 ## [0.3.0] — 2026-07-03
 
 ### Changed
