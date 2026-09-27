@@ -1,9 +1,12 @@
 import type { ClassifierProvider } from './types.js';
 
 /**
- * Scopes whose text may leave the machine for hosted Jev. `ai-landscape` is
- * the public AI-news corpus; `public-fixture` is the committed synthetic eval
- * fixture, granted only after its pinned content hash verifies.
+ * Scopes whose text may leave the machine for hosted Jev — an approval, not a
+ * claim that the text is public. `ai-landscape` is built from public sources
+ * but also carries the owner's own analysis and notes on how their system is
+ * built (no personal data); it was approved for hosted Jev on 2026-09-27.
+ * `public-fixture` is the committed synthetic eval fixture, granted only after
+ * its pinned content hash verifies.
  */
 const DEFAULT_REMOTE_SCOPES = 'ai-landscape,public-fixture';
 
@@ -24,7 +27,7 @@ export function assertRemoteScopeAllowed(
   if (scope === undefined || !remoteClassifierScopes(env).has(scope)) {
     throw new Error(
       `Hosted Jev egress is not allowed for scope "${scope ?? '(none)'}". ` +
-        'Add an explicitly public scope to R2MCP_REMOTE_CLASSIFIER_SCOPES to allow it.',
+        'Add a scope approved for hosted Jev to R2MCP_REMOTE_CLASSIFIER_SCOPES to allow it.',
     );
   }
 }

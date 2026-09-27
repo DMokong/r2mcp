@@ -7,7 +7,7 @@
  * The request/answer shapes mirror TypeSafe's System One wire API
  * (POST /v1/systemone, @typesafe-ai/sdk) so backends swap freely:
  *   - 'openjev'  — local OpenJev server speaking the same wire API (zero egress)
- *   - 'typesafe' — hosted Jev (remote egress; public-content scopes ONLY)
+ *   - 'typesafe' — hosted Jev (remote egress; only scopes approved in R2MCP_REMOTE_CLASSIFIER_SCOPES)
  *   - 'llm-enum' — an existing LLMProvider forced to pick from the enum (baseline)
  *
  * Probabilities are for ranking, not truth: hosted Jev is measurably
