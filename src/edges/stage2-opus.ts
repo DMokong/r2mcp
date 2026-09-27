@@ -1,6 +1,7 @@
 import type { LLMProvider } from '../providers/types.js';
 import { withLLMCallSpan } from '../telemetry.js';
 import { resolveModelTier } from '../model-tier.js';
+import { completeAndParse } from './parse-retry.js';
 import type { EdgeRelation } from './types.js';
 
 export interface MemoryForClassify {
@@ -54,7 +55,9 @@ Avoid "related_to" unless you are sure no stronger relation fits — it is the w
 
 Reply with a single JSON object: {"relation": <one of the seven>, "confidence": <0..1>, "rationale": "<one sentence>"}`;
 
-const STAGE2_MAX_OUTPUT_TOKENS = 256;
+// trk-6qd: 256 left no headroom — replies were cut mid-rationale and failed
+// to parse. The rationale is one sentence; 512 costs nothing when unused.
+const STAGE2_MAX_OUTPUT_TOKENS = 512;
 
 /**
  * AC10: rejection-typed memories are out-of-vocabulary for the `contradicts` relation
@@ -85,7 +88,19 @@ export function parseStage2Response(text: string): {
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    throw new Error(`Stage 2 response is not JSON: ${JSON.stringify(text).slice(0, 200)}`);
+    // trk-6qd: a reply truncated mid-rationale still carries the fields that
+    // matter. Salvage relation + confidence; the rationale is marked partial.
+    const relation = cleaned.match(/"relation"\s*:\s*"([a-z_]+)"/i)?.[1];
+    const confidence = cleaned.match(/"confidence"\s*:\s*([0-9]*\.?[0-9]+)/)?.[1];
+    if (relation === undefined || confidence === undefined) {
+      throw new Error(`Stage 2 response is not JSON: ${JSON.stringify(text).slice(0, 200)}`);
+    }
+    const partial = cleaned.match(/"rationale"\s*:\s*"([^"]*)/)?.[1] ?? '';
+    parsed = {
+      relation,
+      confidence: Number(confidence),
+      rationale: `${partial} [truncated]`.trim(),
+    };
   }
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('Stage 2 response is not an object');
@@ -109,18 +124,18 @@ export async function stage2OpusClassify(
   // has a concrete child span to inherit when this runs as a subprocess.
   // claw-x1mg: env-resolvable tier, resolved once for span + request.
   const model = resolveModelTier('classify-edges-stage2');
-  const result = await withLLMCallSpan(
-    'memory.classify_edges.call',
-    { provider: provider.name, model },
+  const { parsed, cost_usd } = await completeAndParse(
     () =>
-      provider.complete({
-        model,
-        system: STAGE2_SYSTEM,
-        prompt: userPrompt,
-        max_tokens: STAGE2_MAX_OUTPUT_TOKENS,
-      }),
+      withLLMCallSpan('memory.classify_edges.call', { provider: provider.name, model }, () =>
+        provider.complete({
+          model,
+          system: STAGE2_SYSTEM,
+          prompt: userPrompt,
+          max_tokens: STAGE2_MAX_OUTPUT_TOKENS,
+        }),
+      ),
+    parseStage2Response,
   );
-  const parsed = parseStage2Response(result.response);
 
   // AC10 guard: if the LLM returns contradicts despite being told not to for rejection
   // pairs, downgrade to 'none'. The system prompt is the primary defense; this is a fallback.
@@ -130,7 +145,7 @@ export async function stage2OpusClassify(
       relation: 'none',
       confidence: parsed.confidence,
       rationale: `[AC10] downgraded contradicts→none for rejection pair; original rationale: ${parsed.rationale}`,
-      cost_usd: result.cost_usd,
+      cost_usd,
       downgraded: true,
     };
   }
@@ -140,6 +155,6 @@ export async function stage2OpusClassify(
     relation: parsed.relation,
     confidence: parsed.confidence,
     rationale: parsed.rationale,
-    cost_usd: result.cost_usd,
+    cost_usd,
   };
 }
