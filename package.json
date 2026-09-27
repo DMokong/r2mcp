@@ -1,7 +1,7 @@
 {
   "name": "r2mcp",
   "version": "0.4.1",
-  "description": "Persistent semantic memory layer for Claude Code — PostgreSQL + pgvector + OpenRouter embeddings",
+  "description": "Persistent semantic memory layer for Claude Code \u2014 PostgreSQL + pgvector + OpenRouter embeddings",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -32,7 +32,8 @@
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "edges:shadow-report": "tsx src/cli/edges-shadow-report.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
