@@ -204,7 +204,10 @@ const EPSILON = 1e-12;
  * (equivalent to dividing logits by T when probabilities came from a softmax),
  * and returns the mean NLL of the true label under that rescaling.
  */
-function nllAtTemperature(samples: ReadonlyArray<TemperatureFitSample>, temperature: number): number {
+function nllAtTemperature(
+  samples: ReadonlyArray<TemperatureFitSample>,
+  temperature: number,
+): number {
   let total = 0;
   for (const s of samples) {
     const rescaled: Record<string, number> = {};
@@ -272,4 +275,29 @@ export function latencyPercentiles(latenciesMs: ReadonlyArray<number>): LatencyP
 /** Cost per 1,000 classifier judgments, in USD. */
 export function costPer1kUsd(totalCostUsd: number, judgmentCount: number): number {
   return judgmentCount > 0 ? (totalCostUsd / judgmentCount) * 1000 : 0;
+}
+
+/**
+ * Stage-1 ranking quality: the probability that a random related pair scores
+ * above a random unrelated one (ties count half). 0.5 = no signal, 1.0 =
+ * perfect. Unlike a threshold sweep this cannot be flattered by a filter that
+ * passes everything — that failure mode scored "0.95 recall / 0.83 precision"
+ * in trk-7mx while having almost no signal. Null when either class is empty.
+ */
+export function stage1RocAuc(samples: readonly Stage1JudgmentSample[]): number | null {
+  const pos = samples.filter((s) => s.groundTruthPass).map((s) => s.predictedProbability);
+  const neg = samples.filter((s) => !s.groundTruthPass).map((s) => s.predictedProbability);
+  if (pos.length === 0 || neg.length === 0) return null;
+  let wins = 0;
+  for (const p of pos) for (const n of neg) wins += p > n ? 1 : p === n ? 0.5 : 0;
+  return wins / (pos.length * neg.length);
+}
+
+/** Share of pairs a Stage-1 gate would pass at `threshold` — the Stage-2 load. */
+export function stage1PassRate(
+  samples: readonly Stage1JudgmentSample[],
+  threshold: number,
+): number {
+  if (samples.length === 0) return 0;
+  return samples.filter((s) => s.predictedProbability >= threshold).length / samples.length;
 }

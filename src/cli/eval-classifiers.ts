@@ -77,6 +77,8 @@ import {
 } from '../classifiers/eval/judgments.js';
 import {
   sweepStage1Thresholds,
+  stage1RocAuc,
+  stage1PassRate,
   relationConfusionMatrix,
   expectedCalibrationError,
   fitTemperature,
@@ -307,6 +309,8 @@ function summarize(j: BackendJudgments) {
     ground_truth_note: groundTruthNote(j.groundTruthMode),
     stage1: {
       threshold_sweep: sweepStage1Thresholds(j.stage1, thresholds),
+      auc: stage1RocAuc(j.stage1),
+      pass_rate_at_0_5: stage1PassRate(j.stage1, 0.5),
       calibration: expectedCalibrationError(j.stage1Calibration, 10),
       temperature_fit: j.stage1Temperature.length > 0 ? fitTemperature(j.stage1Temperature) : null,
     },
@@ -352,6 +356,9 @@ function toMarkdown(
     );
 
     lines.push('', '### Stage 1 (structural pre-filter)', '');
+    lines.push(
+      `- AUC (related vs none): ${s.stage1.auc === null ? 'n/a' : s.stage1.auc.toFixed(3)}; passes ${(s.stage1.pass_rate_at_0_5 * 100).toFixed(0)}% of pairs at 0.5`,
+    );
     lines.push(`- Calibration ECE (10 bins): ${s.stage1.calibration.ece.toFixed(4)}`);
     if (s.stage1.temperature_fit) {
       const t = s.stage1.temperature_fit;
