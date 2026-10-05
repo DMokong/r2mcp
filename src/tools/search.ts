@@ -1,5 +1,6 @@
 import { getPool } from '../db.js';
 import { currentScope, DEFAULT_SCOPE } from '../env.js';
+import { scopeClause } from './recall.js';
 
 export interface SearchFilter {
   type?: string;
@@ -16,6 +17,12 @@ export interface SearchInput {
   limit?: number;
   /** claw-nyxd: when true, search across ALL project scopes (default: current + global). */
   all_scopes?: boolean;
+  /**
+   * trk-cou: read a SPECIFIC project scope (+ global) instead of the env's
+   * current scope — mirrors recall()'s `scope` param. Ignored when all_scopes
+   * is true.
+   */
+  scope?: string;
 }
 
 export interface SearchResultEntry {
@@ -38,18 +45,25 @@ export interface SearchResult {
 
 export async function search(input: SearchInput): Promise<SearchResult> {
   const pool = getPool();
-  const { filter, query, limit = 20, all_scopes = false } = input;
+  const { filter, query, limit = 20, all_scopes = false, scope } = input;
 
   const conditions: string[] = ["type != 'rejection'"];
   const params: unknown[] = [];
-  let paramIndex = 1;
 
-  // claw-nyxd: restrict to current + global scope unless all_scopes is set.
-  if (!all_scopes) {
-    conditions.push(`project_scope = ANY($${paramIndex}::text[])`);
-    params.push(Array.from(new Set([currentScope(), DEFAULT_SCOPE])));
-    paramIndex++;
+  // trk-cou: same scope resolution recall() uses — union of the requested (or
+  // current) scope with DEFAULT_SCOPE, or no filter at all (null) when
+  // all_scopes is set. Reusing scopeClause keeps the two tools from drifting
+  // apart the way they did before (search() had its own inline predicate that
+  // never resolved an explicit `scope`, unlike recall()).
+  const scopes: string[] | null = all_scopes
+    ? null
+    : Array.from(new Set([scope ?? currentScope(), DEFAULT_SCOPE]));
+  const scopeFilter = scopeClause('', params, scopes);
+  if (scopeFilter) {
+    conditions.push(scopeFilter.replace(/^ AND /, ''));
   }
+
+  let paramIndex = params.length + 1;
 
   if (filter) {
     if (filter.type) {

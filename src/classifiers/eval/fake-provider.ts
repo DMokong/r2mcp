@@ -44,8 +44,11 @@ export function createFakeClassifierProvider(
           answers[key] = { type: 'noul', noul };
         } else if (question.type === 'choice') {
           const labels = Object.keys(question.labels);
-          const probabilities = opts.choiceAnswer ? opts.choiceAnswer(req, labels) : uniform(labels);
-          const choice = Object.entries(probabilities).sort((a, b) => b[1] - a[1])[0]?.[0] ?? labels[0];
+          const probabilities = opts.choiceAnswer
+            ? opts.choiceAnswer(req, labels)
+            : uniform(labels);
+          const choice =
+            Object.entries(probabilities).sort((a, b) => b[1] - a[1])[0]?.[0] ?? labels[0];
           answers[key] = {
             type: 'choice',
             choice,
@@ -55,7 +58,9 @@ export function createFakeClassifierProvider(
         } else if (question.type === 'score') {
           throw new Error('FakeClassifierProvider: score questions are not used by trk-7mx.1');
         } else {
-          throw new Error(`FakeClassifierProvider: unsupported question type ${(question as { type: string }).type}`);
+          throw new Error(
+            `FakeClassifierProvider: unsupported question type ${(question as { type: string }).type}`,
+          );
         }
       }
       return {

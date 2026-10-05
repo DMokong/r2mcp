@@ -27,7 +27,10 @@ import { pairHash } from '../edges/state.js';
 import type { EdgeRelation } from '../edges/types.js';
 import { writeFileSafely } from '../classifiers/eval/safe-write.js';
 import { roundRobinSample } from '../classifiers/eval/sampling.js';
-import type { CorpusRecord as SharedCorpusRecord, RawMemory } from '../classifiers/eval/corpus-schema.js';
+import type {
+  CorpusRecord as SharedCorpusRecord,
+  RawMemory,
+} from '../classifiers/eval/corpus-schema.js';
 
 // The checkout holding .env and data/edges-state.jsonl. A git worktree has
 // neither, so point R2MCP_PROJECT_ROOT (or --env-file) at the main checkout.
@@ -45,12 +48,18 @@ interface CliArgs {
 }
 
 function flagValue(argv: string[], name: string): string | undefined {
-  return argv.find((a) => a.startsWith(`${name}=`))?.split('=').slice(1).join('=');
+  return argv
+    .find((a) => a.startsWith(`${name}=`))
+    ?.split('=')
+    .slice(1)
+    .join('=');
 }
 
 function parseArgs(argv: string[]): CliArgs {
   const envFile = resolve(
-    flagValue(argv, '--env-file') ?? process.env.R2MCP_ENV_FILE ?? join(DEFAULT_PROJECT_ROOT, '.env'),
+    flagValue(argv, '--env-file') ??
+      process.env.R2MCP_ENV_FILE ??
+      join(DEFAULT_PROJECT_ROOT, '.env'),
   );
   const edgeStateFile = resolve(
     flagValue(argv, '--edge-state-file') ??
@@ -84,7 +93,10 @@ function readRejectedHashes(edgeStateFile: string): Set<string> {
 }
 
 function writeJsonl(path: string, records: ReadonlyArray<unknown>): void {
-  writeFileSafely(path, records.map((r) => JSON.stringify(r)).join('\n') + (records.length ? '\n' : ''));
+  writeFileSafely(
+    path,
+    records.map((r) => JSON.stringify(r)).join('\n') + (records.length ? '\n' : ''),
+  );
 }
 
 async function main() {
@@ -131,9 +143,9 @@ async function main() {
   const rejectedHashes = readRejectedHashes(args.edgeStateFile);
   const scopes = args.scope
     ? [args.scope]
-    : (await pool.query<{ project_scope: string }>('SELECT DISTINCT project_scope FROM memories')).rows.map(
-        (r) => r.project_scope,
-      );
+    : (
+        await pool.query<{ project_scope: string }>('SELECT DISTINCT project_scope FROM memories')
+      ).rows.map((r) => r.project_scope);
 
   const rejectedIdPairs: Array<{ fromId: string; toId: string; pairId: string }> = [];
   for (const scope of scopes) {
@@ -149,9 +161,10 @@ async function main() {
   const rejectedRecords: CorpusRecord[] = [];
   if (rejectedIdPairs.length > 0) {
     const ids = [...new Set(rejectedIdPairs.flatMap((p) => [p.fromId, p.toId]))];
-    const memRes = await pool.query<RawMemory>('SELECT id, content, type FROM memories WHERE id = ANY($1)', [
-      ids,
-    ]);
+    const memRes = await pool.query<RawMemory>(
+      'SELECT id, content, type FROM memories WHERE id = ANY($1)',
+      [ids],
+    );
     const byId = new Map(memRes.rows.map((m) => [m.id, m]));
     for (const p of rejectedIdPairs) {
       const from = byId.get(p.fromId);
@@ -197,7 +210,8 @@ async function main() {
   writeJsonl(spotCheckPath, spotCheck);
 
   const counts: Record<string, number> = {};
-  for (const r of corpus) counts[r.relation ?? r.source] = (counts[r.relation ?? r.source] ?? 0) + 1;
+  for (const r of corpus)
+    counts[r.relation ?? r.source] = (counts[r.relation ?? r.source] ?? 0) + 1;
 
   process.stdout.write(
     JSON.stringify(

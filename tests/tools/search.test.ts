@@ -145,3 +145,63 @@ describe('search() tool', () => {
     expect(result.results).toEqual([]);
   });
 });
+
+describe('search() scope resolution (trk-cou)', () => {
+  // trk-cou: search()'s metadata-filter path built its own inline
+  // project_scope predicate that only ever resolved current+global — unlike
+  // recall(), it had no `scope` param at all, so an explicit non-default
+  // scope (e.g. the ai-landscape index's date:YYYY-MM-DD topic key) silently
+  // returned zero rows unless the caller passed all_scopes:true.
+
+  it('search({filter: {topics}, scope}) reads a SPECIFIC scope, matching recall()', async () => {
+    await remember(
+      {
+        operation: 'ADD',
+        tier: 'project-context',
+        content: 'AI landscape digest for 2026-09-02',
+        metadata: { type: 'context', topics: ['date:2026-09-02'] },
+      },
+      'ai-landscape',
+    );
+
+    const scoped = await search({
+      filter: { topics: ['date:2026-09-02'] },
+      scope: 'ai-landscape',
+    });
+    expect(scoped.count).toBe(1);
+    expect(scoped.results[0].content).toBe('AI landscape digest for 2026-09-02');
+
+    // Default scope (no `scope`, no `all_scopes`) must NOT see the
+    // ai-landscape row — this is exactly the bug: the topics filter path
+    // ignored `scope` and fell back to current+global only.
+    const unscoped = await search({ filter: { topics: ['date:2026-09-02'] } });
+    expect(unscoped.count).toBe(0);
+
+    const allScopes = await search({
+      filter: { topics: ['date:2026-09-02'] },
+      all_scopes: true,
+    });
+    expect(allScopes.count).toBe(1);
+  });
+
+  it('search({filter: {created_after}, scope}) also resolves scope — not topic-specific', async () => {
+    await remember(
+      {
+        operation: 'ADD',
+        tier: 'project-context',
+        content: 'Recent ai-landscape entry',
+        metadata: { type: 'context' },
+      },
+      'ai-landscape',
+    );
+
+    const scoped = await search({
+      filter: { created_after: '2020-01-01' },
+      scope: 'ai-landscape',
+    });
+    expect(scoped.results.map((r) => r.content)).toContain('Recent ai-landscape entry');
+
+    const unscoped = await search({ filter: { created_after: '2020-01-01' } });
+    expect(unscoped.results.map((r) => r.content)).not.toContain('Recent ai-landscape entry');
+  });
+});

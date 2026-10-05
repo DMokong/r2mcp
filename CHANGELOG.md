@@ -5,6 +5,18 @@ entries reference the internal spec numbers that shipped them.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`search()` scope resolution** (trk-cou): the metadata-filter path built its
+  own inline `project_scope` predicate that only ever resolved current +
+  global — unlike `recall()`, `search()` had no `scope` parameter at all. A
+  filter-only query against a non-default scope (e.g. the ai-landscape index's
+  `date:YYYY-MM-DD` topic key) silently returned zero rows unless the caller
+  passed `all_scopes: true`, indistinguishable from "no data that day."
+  `search()` now takes the same `scope` parameter as `recall()` and resolves
+  it through the same `scopeClause()` helper, for every filter key (topics,
+  created_after/before, tier, type, persons) — not just topics.
+
 ## [0.5.0] — 2026-09-27
 
 ### Added
