@@ -204,4 +204,36 @@ describe('search() scope resolution (trk-cou)', () => {
     const unscoped = await search({ filter: { created_after: '2020-01-01' } });
     expect(unscoped.results.map((r) => r.content)).not.toContain('Recent ai-landscape entry');
   });
+
+  // trk-59i: trk-fj8 made DATE columns read back as the stored 'YYYY-MM-DD'
+  // string, but the result mapper still called row.date.toISOString() — so
+  // every search() that matched a dated row threw. No earlier test here set
+  // metadata.date, which is why the suite stayed green.
+  it('returns the stored date string for a memory with a DATE column value', async () => {
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'Australia/Melbourne';
+    try {
+      await remember({
+        operation: 'ADD',
+        tier: 'project-context',
+        content: 'AI landscape digest for 2026-05-12',
+        metadata: { type: 'context', topics: ['date:2026-05-12'], date: '2026-05-12' },
+      });
+      await remember({
+        operation: 'ADD',
+        tier: 'project-context',
+        content: 'Undated note',
+        metadata: { type: 'context', topics: ['date:2026-05-12'] },
+      });
+
+      const result = await search({ filter: { topics: ['date:2026-05-12'] } });
+
+      expect(result.count).toBe(2);
+      const byContent = new Map(result.results.map((r) => [r.content, r.date]));
+      expect(byContent.get('AI landscape digest for 2026-05-12')).toBe('2026-05-12');
+      expect(byContent.get('Undated note')).toBeNull();
+    } finally {
+      process.env.TZ = originalTz;
+    }
+  });
 });

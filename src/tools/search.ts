@@ -130,7 +130,8 @@ export async function search(input: SearchInput): Promise<SearchResult> {
       topics: row.topics || [],
       people: row.people || [],
       section: row.section,
-      date: row.date ? row.date.toISOString().split('T')[0] : null,
+      // DATE reads back as its stored 'YYYY-MM-DD' string (trk-fj8 parser).
+      date: row.date ?? null,
       created_at: row.created_at.toISOString(),
       updated_at: row.updated_at.toISOString(),
     })),
