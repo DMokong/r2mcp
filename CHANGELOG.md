@@ -5,8 +5,20 @@ entries reference the internal spec numbers that shipped them.
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-10-06
+
 ### Fixed
 
+- **DATE columns read back a day early** (trk-fj8): node-pg's default DATE
+  parser builds a JS `Date` at local midnight, so for anyone east of UTC a
+  stored `2026-05-12` came back as `2026-05-11`. `connectDb()` now registers
+  an identity parser for DATE (OID 1082) — a DATE has no time component, so
+  the stored `YYYY-MM-DD` string is the correct representation. Stored values
+  were never wrong and are not rewritten.
+- **`search()` threw on any dated row once DATE read back as a string**
+  (trk-59i): the result mapper still called `row.date.toISOString()`.
+  `search()` now returns the stored string as-is, with a regression test that
+  searches dated and undated memories.
 - **`search()` scope resolution** (trk-cou): the metadata-filter path built its
   own inline `project_scope` predicate that only ever resolved current +
   global — unlike `recall()`, `search()` had no `scope` parameter at all. A
