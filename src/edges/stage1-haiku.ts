@@ -1,6 +1,7 @@
 import type { LLMProvider } from '../providers/types.js';
 import { withLLMCallSpan } from '../telemetry.js';
 import { resolveModelTier } from '../model-tier.js';
+import { completeAndParse } from './parse-retry.js';
 
 export interface PairForFilter {
   from: { id: string; content: string };
@@ -13,21 +14,31 @@ export interface Stage1Result {
   cost_usd: number;
 }
 
-const STAGE1_SYSTEM = `You are a filter that decides whether two memories MIGHT have a meaningful structural relation worth deeper analysis.
+// trk-7mx.3: recall-biased. The previous wording ("say NO if they describe
+// distinct, non-conflicting things despite sharing topic tags") rejected 41%
+// of pairs a human labelled as related. A miss here is permanent (Stage 2
+// never sees the pair); a false pass only costs one Stage-2 call, which can
+// still answer "none".
+const STAGE1_SYSTEM = `You are a cheap pre-filter in front of a careful relation classifier. Decide whether two memories MIGHT be related closely enough to be worth that deeper look.
 
 Reply with one line in this exact format:
   YES — <brief reason>
   NO — <brief reason>
 
-Say YES if the two memories appear to make claims about overlapping things — e.g., they recommend or contradict each other on the same subject, one is a refinement of the other, or one depends on the other. Say NO if they describe distinct, non-conflicting things despite sharing topic tags. Reply with ONLY the single line — no other text.`;
+Say YES if they could plausibly be connected in any of these ways: one supports, contradicts, updates, replaces, refines, or depends on the other, or both are about the same specific subject, project, decision, or tool. Say NO only when they are clearly about different things. When unsure, say YES — the next stage makes the exact call and can still reject the pair. Reply with ONLY the single line — no other text.`;
 
 const STAGE1_MAX_OUTPUT_TOKENS = 64;
 
 export function parseStage1Response(text: string): { pass: boolean; comment: string } {
-  const trimmed = text.trim();
-  const match = trimmed.match(/^(YES|NO)(?:\s*[—\-:]\s*(.*))?$/i);
+  // trk-6qd: models often wrap the verdict (multi-line reasons, **bold**, a
+  // leading "Answer:"). Only the leading YES/NO token decides; everything
+  // after it, across lines, is the comment.
+  const flat = text.replace(/\s+/g, ' ').trim();
+  const match = flat.match(
+    /^[*_`"'\s]*(?:answer\s*:\s*)?[*_`"'\s]*(YES|NO)\b[*_`"']*\s*(?:[—\-:.,]\s*)?(.*)$/i,
+  );
   if (!match) {
-    throw new Error(`Stage 1 response not parseable: ${JSON.stringify(text)}`);
+    throw new Error(`Stage 1 response not parseable: ${JSON.stringify(text).slice(0, 200)}`);
   }
   return {
     pass: match[1].toUpperCase() === 'YES',
@@ -46,17 +57,17 @@ export async function stage1HaikuFilter(
   // and the request always report the same model. The filename still says
   // "haiku" for import stability; the shipped default is now sonnet.
   const model = resolveModelTier('classify-edges-stage1');
-  const result = await withLLMCallSpan(
-    'memory.classify_edges.call',
-    { provider: provider.name, model },
+  const { parsed, cost_usd } = await completeAndParse(
     () =>
-      provider.complete({
-        model,
-        system: STAGE1_SYSTEM,
-        prompt: userPrompt,
-        max_tokens: STAGE1_MAX_OUTPUT_TOKENS,
-      }),
+      withLLMCallSpan('memory.classify_edges.call', { provider: provider.name, model }, () =>
+        provider.complete({
+          model,
+          system: STAGE1_SYSTEM,
+          prompt: userPrompt,
+          max_tokens: STAGE1_MAX_OUTPUT_TOKENS,
+        }),
+      ),
+    parseStage1Response,
   );
-  const parsed = parseStage1Response(result.response);
-  return { pass: parsed.pass, comment: parsed.comment, cost_usd: result.cost_usd };
+  return { pass: parsed.pass, comment: parsed.comment, cost_usd };
 }

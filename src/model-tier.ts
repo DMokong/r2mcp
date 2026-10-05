@@ -30,6 +30,7 @@ import type { LogicalModel } from './providers/types.js';
 
 export type ModelPurpose =
   | 'compile-wiki'
+  | 'classify-enum'
   | 'classify-edges-stage1'
   | 'classify-edges-stage2'
   | 'extract-entities';
@@ -43,6 +44,7 @@ export type ModelPurpose =
  */
 const DEFAULT_TIERS: Record<ModelPurpose, LogicalModel> = {
   'compile-wiki': 'sonnet',
+  'classify-enum': 'sonnet',
   'classify-edges-stage1': 'sonnet',
   'classify-edges-stage2': 'opus',
   'extract-entities': 'sonnet',
@@ -50,6 +52,7 @@ const DEFAULT_TIERS: Record<ModelPurpose, LogicalModel> = {
 
 const PURPOSE_ENV_VARS: Record<ModelPurpose, string> = {
   'compile-wiki': 'R2MCP_COMPILE_WIKI_MODEL',
+  'classify-enum': 'R2MCP_CLASSIFY_ENUM_MODEL',
   'classify-edges-stage1': 'R2MCP_CLASSIFY_EDGES_STAGE1_MODEL',
   'classify-edges-stage2': 'R2MCP_CLASSIFY_EDGES_STAGE2_MODEL',
   'extract-entities': 'R2MCP_EXTRACT_ENTITIES_MODEL',

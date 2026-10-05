@@ -44,6 +44,9 @@ import {
   type ProviderName,
 } from '../providers/index.js';
 import { loadEnvFile, currentScope } from '../env.js';
+import { shadowStage1, type ShadowMemory } from '../edges/stage1-shadow.js';
+import { OpenJevClassifier, TypeSafeClassifier } from '../classifiers/index.js';
+import type { ClassifierProvider } from '../classifiers/types.js';
 
 // Load .env from project root — launchd-spawned subprocesses don't inherit
 // shell env, so OTEL_ENABLED + DB URL + provider keys must be loaded here
@@ -51,6 +54,28 @@ import { loadEnvFile, currentScope } from '../env.js';
 loadEnvFile(resolve(process.env.PROJECT_ROOT || process.cwd(), '.env'));
 
 const CLASSIFIER_VERSION = 'edges-v1-2026-05-03';
+
+/**
+ * trk-7mx shadow trial: R2MCP_EDGE_STAGE1_SHADOW=typesafe|openjev scores every
+ * Stage-1 pair with that classifier too and logs it to edges-shadow.jsonl.
+ * Decisions are untouched. Returns null (with one warning) when the backend
+ * cannot start — e.g. hosted Jev without a key, or a scope not approved in
+ * R2MCP_REMOTE_CLASSIFIER_SCOPES — so a shadow problem never fails the run.
+ */
+function makeShadowClassifier(): ClassifierProvider | null {
+  const backend = process.env.R2MCP_EDGE_STAGE1_SHADOW?.trim();
+  if (!backend) return null;
+  try {
+    if (backend === 'typesafe') return new TypeSafeClassifier({ scope: currentScope() });
+    if (backend === 'openjev') return new OpenJevClassifier();
+    throw new Error(`unknown backend "${backend}" (use typesafe or openjev)`);
+  } catch (err) {
+    process.stderr.write(
+      `[shadow] disabled: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return null;
+  }
+}
 
 interface CliArgs {
   sinceDays?: number;
@@ -102,6 +127,16 @@ async function main() {
   // Lazy-create the provider only for non-dry-run paths. Dry-run is read-only
   // and never calls into a provider, so don't fail if none is configured.
   const provider = args.dryRun ? null : await selectProvider({ flag: args.providerFlag });
+  const shadowClassifier = args.dryRun ? null : makeShadowClassifier();
+  const shadowLog = resolve(dataDir, 'edges-shadow.jsonl');
+  const fetchShadowMemories = async (ids: [string, string]) => {
+    const r = await pool.query<ShadowMemory>(
+      'SELECT id, content, topics, section FROM memories WHERE id = ANY($1)',
+      [ids],
+    );
+    const byId = new Map(r.rows.map((m) => [m.id, m]));
+    return [byId.get(ids[0]), byId.get(ids[1])] as const;
+  };
 
   const summary = await withToolSpan(
     'classify_edges',
@@ -129,7 +164,21 @@ async function main() {
             );
             return r.rows[0] ?? null;
           },
-          stage1Filter: (pair) => stage1HaikuFilter(provider!, pair),
+          stage1Filter: async (pair) => {
+            const primary = await stage1HaikuFilter(provider!, pair);
+            if (shadowClassifier) {
+              const [from, to] = await fetchShadowMemories([pair.from.id, pair.to.id]);
+              if (from && to) {
+                await shadowStage1(
+                  { classifier: shadowClassifier, scope: currentScope(), logPath: shadowLog },
+                  from,
+                  to,
+                  primary,
+                );
+              }
+            }
+            return primary;
+          },
           stage2Classify: (pair) => stage2OpusClassify(provider!, pair),
           insertEdge: async (fromId, toId, relation, confidence, rationale, version) => {
             const res = await pool.query<{ id: string }>(

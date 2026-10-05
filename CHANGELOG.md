@@ -17,6 +17,59 @@ entries reference the internal spec numbers that shipped them.
   it through the same `scopeClause()` helper, for every filter key (topics,
   created_after/before, tier, type, persons) — not just topics.
 
+## [0.5.0] — 2026-09-27
+
+### Added
+
+- **Classifier primitive** (trk-7mx): `ClassifierProvider` — bounded question
+  + enumerated answers + probabilities, never prose — separate from
+  `LLMProvider.complete()`, shaped like TypeSafe's System One wire API.
+  Backends: `typesafe` (hosted Jev; remote egress, refused at construction
+  unless the scope is listed in `R2MCP_REMOTE_CLASSIFIER_SCOPES`, default
+  `ai-landscape,public-fixture`), `openjev` (a local OpenJev server,
+  `R2MCP_OPENJEV_URL` / `R2MCP_OPENJEV_MODEL`), and `llm-enum` (any
+  `LLMProvider` forced onto the enum). New dependency: `@typesafe-ai/sdk`.
+- **Stage-1 shadow trial** (trk-7mx): `R2MCP_EDGE_STAGE1_SHADOW=typesafe|openjev`
+  scores every `classify-edges` Stage-1 pair with that classifier as well and
+  logs ids + scores to `data/edges-shadow.jsonl`; decisions are unchanged and
+  the shadow can never fail the run. Pairs touching health- or
+  finance-related memories (topic, section, or text) are never sent to a
+  remote classifier. `npm run edges:shadow-report` summarises agreement and
+  lists candidate missed edges.
+- **Classifier shadow-eval harness** (trk-7mx.1): `eval:corpus`,
+  `eval:classifiers` — schema-validated corpora, hash-pinned public fixture,
+  human-label-only accuracy, Stage-1 AUC / threshold sweep / calibration,
+  fixed-cohort Stage-2 and cascade metrics, per-pair failure accounting.
+- **Remote profile** (spec-059, previously unreleased on main): the 5-tool
+  memory profile over streamable HTTP with MCP resource-server auth.
+
+## [0.4.1] — 2026-09-27
+
+### Fixed
+
+- **Edge classification no longer dies on one bad LLM reply** (trk-6qd). A
+  single unparseable Stage-2 reply threw out of `classify-edges` and aborted
+  the whole run — every nightly run in production was failing this way (e.g.
+  a rationale containing unescaped quotes). Stage 1 now reads only the leading
+  YES/NO token (multi-line reasons, `**bold**`, an `Answer:` prefix are fine);
+  Stage 2's output budget is 512 tokens (was 256), a reply that breaks after
+  `relation` and `confidence` is salvaged with its rationale marked
+  `[truncated]`, and both stages retry once on a reply with no usable fields.
+
+### Changed
+
+- **Recall-biased Stage-1 filter** (trk-7mx.3). A Stage-1 miss is permanent;
+  a false pass costs one Stage-2 call that can still answer `none`. Measured
+  live against 50 hand-labelled pairs: recall 0.59 → 0.69 at unchanged
+  precision 1.00; on the public 42-pair fixture 0.77 → 0.88 (AUC 0.94).
+
+## [0.4.0] — 2026-08-09
+
+### Changed
+
+- **Env-resolvable model tiers** (claw-x1mg): call sites request a purpose,
+  not a model; see `src/model-tier.ts`.
+
 ## [0.3.0] — 2026-07-03
 
 ### Changed
