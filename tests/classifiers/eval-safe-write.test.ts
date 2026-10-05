@@ -25,6 +25,8 @@ describe('canonicalize (fix #8)', () => {
     const outsideDir = mkdtempSync(join(tmpdir(), 'safe-write-outside-'));
     cleanup.push(outsideDir);
     const linkDir = join(CANONICAL_DATA_DIR, `escape-link-${process.pid}`);
+    // data/ is gitignored, so it does not exist in a fresh checkout (CI).
+    mkdirSync(CANONICAL_DATA_DIR, { recursive: true });
     symlinkSync(outsideDir, linkDir);
     cleanup.push(linkDir);
     try {

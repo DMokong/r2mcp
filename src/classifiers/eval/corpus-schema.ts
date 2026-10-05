@@ -63,7 +63,9 @@ export function normalizeFixtureRecord(raw: unknown, lineNo: number): CorpusReco
   if (!isRawMemory(r.from)) throw new Error(`fixture line ${lineNo}: invalid or missing "from"`);
   if (!isRawMemory(r.to)) throw new Error(`fixture line ${lineNo}: invalid or missing "to"`);
   if (!isRelationLabel(r.expected_relation)) {
-    throw new Error(`fixture line ${lineNo}: invalid "expected_relation" ${JSON.stringify(r.expected_relation)}`);
+    throw new Error(
+      `fixture line ${lineNo}: invalid "expected_relation" ${JSON.stringify(r.expected_relation)}`,
+    );
   }
   const relation = r.expected_relation;
   return {
@@ -98,7 +100,9 @@ export function normalizeDbRecord(raw: unknown, lineNo: number): CorpusRecord {
     throw new Error(`corpus line ${lineNo}: invalid "confidence" ${JSON.stringify(r.confidence)}`);
   }
   if (r.stage1_pass !== null && r.stage1_pass !== undefined && typeof r.stage1_pass !== 'boolean') {
-    throw new Error(`corpus line ${lineNo}: invalid "stage1_pass" ${JSON.stringify(r.stage1_pass)}`);
+    throw new Error(
+      `corpus line ${lineNo}: invalid "stage1_pass" ${JSON.stringify(r.stage1_pass)}`,
+    );
   }
   return {
     pair_id: r.pair_id,
@@ -137,7 +141,9 @@ export function parseHumanLabels(raw: string): Map<string, RelationLabel> {
     }
     if (r.human_label === null || r.human_label === undefined) return; // not yet labelled
     if (!isRelationLabel(r.human_label)) {
-      throw new Error(`labels line ${lineNo}: invalid "human_label" ${JSON.stringify(r.human_label)}`);
+      throw new Error(
+        `labels line ${lineNo}: invalid "human_label" ${JSON.stringify(r.human_label)}`,
+      );
     }
     map.set(r.pair_id, r.human_label);
   });

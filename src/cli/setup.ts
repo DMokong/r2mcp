@@ -99,7 +99,9 @@ async function setup() {
       '       "env": { "R2MCP_DATABASE_URL": "<your-url>", "R2MCP_OPENROUTER_API_KEY": "<your-key>", "R2MCP_SCOPE": "<project-name>" }',
     );
     console.log('     }');
-    console.log('     (from a repo clone instead: "command": "node", "args": ["<path>/dist/index.js"] after npm run build)');
+    console.log(
+      '     (from a repo clone instead: "command": "node", "args": ["<path>/dist/index.js"] after npm run build)',
+    );
     console.log('  2. Restart Claude Code to pick up the new MCP server');
   } finally {
     client.release();

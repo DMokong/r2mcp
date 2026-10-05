@@ -20,7 +20,11 @@ export function roundRobinSample<T>(strata: ReadonlyArray<T[]>, total: number): 
 }
 
 /** Groups `records` by `keyFn` and round-robin samples down to `limit` — every group gets a fair share. */
-export function stratifiedLimit<T>(records: ReadonlyArray<T>, limit: number, keyFn: (item: T) => string): T[] {
+export function stratifiedLimit<T>(
+  records: ReadonlyArray<T>,
+  limit: number,
+  keyFn: (item: T) => string,
+): T[] {
   const groups = new Map<string, T[]>();
   for (const r of records) {
     const key = keyFn(r);

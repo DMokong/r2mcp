@@ -29,7 +29,8 @@ export const PUBLIC_FIXTURE_PATH = fileURLToPath(
  * whenever the fixture's content intentionally changes (e.g. new
  * hand-labelled pairs): `shasum -a 256 tests/fixtures/edge-corpus.jsonl`.
  */
-export const PUBLIC_FIXTURE_SHA256 = '0fc1f9a2ada58b5c9ed496ec217695b333c1d2299c46712ef39d4ad144c97513';
+export const PUBLIC_FIXTURE_SHA256 =
+  '0fc1f9a2ada58b5c9ed496ec217695b333c1d2299c46712ef39d4ad144c97513';
 
 /**
  * Resolves corpus provenance from a buffer the caller already read from

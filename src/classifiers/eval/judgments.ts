@@ -81,11 +81,20 @@ export function judgeRecord(input: JudgeRecordInput): RecordJudgments {
   }
 
   if (input.groundTruthRelation !== null) {
-    const cascadePredicted: RelationLabel = predictedPass && input.stage2 ? input.stage2.relation : 'none';
-    out.cascadeSample = { pairId: input.pairId, actual: input.groundTruthRelation, predicted: cascadePredicted };
+    const cascadePredicted: RelationLabel =
+      predictedPass && input.stage2 ? input.stage2.relation : 'none';
+    out.cascadeSample = {
+      pairId: input.pairId,
+      actual: input.groundTruthRelation,
+      predicted: cascadePredicted,
+    };
 
     if (input.stage2) {
-      out.stage2Sample = { pairId: input.pairId, actual: input.groundTruthRelation, predicted: input.stage2.relation };
+      out.stage2Sample = {
+        pairId: input.pairId,
+        actual: input.groundTruthRelation,
+        predicted: input.stage2.relation,
+      };
       out.stage2Calibration = {
         confidence: input.stage2.confidence,
         correct: input.stage2.relation === input.groundTruthRelation,
@@ -136,6 +145,9 @@ export function pushJudgments(acc: JudgmentAccumulator, j: RecordJudgments): voi
 
 /** Whether Stage 2 needs to run at all for this record: the cascade needs it if Stage 1 passed, and the
  * fixed-cohort report needs it whenever the true relation is known, regardless of what Stage 1 said. */
-export function stage2IsNeeded(stage1Probability: number, groundTruthRelation: RelationLabel | null): boolean {
+export function stage2IsNeeded(
+  stage1Probability: number,
+  groundTruthRelation: RelationLabel | null,
+): boolean {
   return stage1Probability >= 0.5 || groundTruthRelation !== null;
 }

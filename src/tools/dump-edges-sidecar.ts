@@ -42,7 +42,9 @@ export async function dumpEdgesJsonWithClient(
   // a scoped dump must never emit an edge pointing at a memory it excluded.
   const scopeParams: unknown[] = scopes === null ? [] : [scopes];
   const edgeScopeClause =
-    scopes === null ? '' : ' AND m1.project_scope = ANY($1::text[]) AND m2.project_scope = ANY($1::text[])';
+    scopes === null
+      ? ''
+      : ' AND m1.project_scope = ANY($1::text[]) AND m2.project_scope = ANY($1::text[])';
   const memoryScopeClause = scopes === null ? '' : ' AND project_scope = ANY($1::text[])';
 
   const edges = await client.query(
