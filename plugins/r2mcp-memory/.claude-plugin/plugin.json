@@ -1,6 +1,6 @@
 {
   "name": "r2mcp-memory",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "r2mcp memory beside the chat: memories related to what you're asking, and at each turn's end a cheap gate and a fork that propose what to remember. Any memory opens in full in a reader",
   "author": {
     "name": "Dustin Cheng"

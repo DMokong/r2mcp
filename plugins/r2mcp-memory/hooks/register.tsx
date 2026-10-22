@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, TurnCompleteInput, UiPressArgument } from 'claude-code'
 
 import { TIMED_OUT, appendStore, runFork, runGate, withinCap } from './lib/gateFork'
-import { age, bar, parseHits } from './lib/recall'
+import { age, bar, localDate, parseHits, stamp } from './lib/recall'
 import { SUMMARY_SYSTEM, parseSummary, readable } from './lib/readable'
 import type { Readable, Span } from './lib/readable'
 import {
@@ -154,7 +154,8 @@ async function nearest($: $, content: string): Promise<Planned['match']> {
 async function writeMemory($: $, item: Planned): Promise<void> {
   if (item.op === 'NOOP') return
   const session = await $.session.id()
-  const date = new Date(await $.clock.now()).toISOString().slice(0, 10)
+  // The local day: an ISO string is UTC, a day behind east of Greenwich each morning.
+  const date = localDate(await $.clock.now())
   const args: Record<string, unknown> = {
     operation: item.op,
     tier: item.tier,
@@ -278,6 +279,7 @@ async function runScribe($: $, e: TurnCompleteInput): Promise<void> {
       ...candidate,
       id: `${session.slice(0, 8)}-${at}-${i}`,
       turn: at,
+      at: base.at,
       op: planOp(candidate, match?.score),
       match,
       status: mode === 'shadow' ? 'shadow' : 'pending',
@@ -652,7 +654,11 @@ export const register: Register = (on, options) => {
             {' '}{(item as Planned).op}{' '}
           </Text>
           <Text color={TIER_COLOR[(item as Planned).tier] ?? GREY}> {(item as Planned).tier}</Text>
-          <Text dimColor>/{(item as Planned).type} · turn {(item as Planned).turn}</Text>
+          <Text dimColor>/{(item as Planned).type}</Text>
+          <Text color={BLUE}>
+            {(item as Planned).at !== undefined ? ` · proposed ${stamp((item as Planned).at ?? 0, now)}` : ''}
+          </Text>
+          <Text dimColor> · turn {(item as Planned).turn}</Text>
         </Text>
       )
 
@@ -811,6 +817,7 @@ export const register: Register = (on, options) => {
                     <Text color="#000000" backgroundColor={OP_COLOR[item.op] ?? GREY}>
                       {' '}{item.op}{' '}
                     </Text>
+                    {item.at !== undefined && <Text color={BLUE}> {stamp(item.at, now)}</Text>}
                     <Text color={TIER_COLOR[item.tier] ?? GREY}> {TIER_SHORT[item.tier] ?? item.tier}</Text>
                     <Text dimColor>/{item.type}</Text>
                     {item.match && <Text color={GREY}> ≈{item.match.score.toFixed(2)}</Text>}
@@ -900,7 +907,7 @@ export const register: Register = (on, options) => {
               return (
                 <Text wrap="truncate">
                   <Text color={color}>{mark} </Text>
-                  <Text dimColor>t{r.turn} </Text>
+                  <Text dimColor>{stamp(r.at, now)} t{r.turn} </Text>
                   <Text color={color}>{r.stage.padEnd(14)}</Text>
                   <Text dimColor>{detail}</Text>
                 </Text>
