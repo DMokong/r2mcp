@@ -1,0 +1,55 @@
+{
+  "name": "r2mcp-memory",
+  "version": "0.1.0",
+  "description": "r2mcp memory beside the chat: memories related to what you're asking, and at each turn's end a cheap gate and a fork that propose what to remember. Any memory opens in full in a reader",
+  "author": {
+    "name": "Dustin Cheng"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/DMokong/r2mcp",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "mode": {
+      "type": "string",
+      "title": "Remember mode",
+      "description": "off: nothing is weighed; shadow: weighed and shown, nothing written; propose: Save/Skip in the pane; auto: written to r2mcp",
+      "options": [
+        "off",
+        "shadow",
+        "propose",
+        "auto"
+      ],
+      "default": "propose"
+    },
+    "relatedTurns": {
+      "type": "number",
+      "title": "Related: turns kept",
+      "description": "How many of your recent prompts the Related list covers",
+      "default": 3
+    },
+    "forkCap": {
+      "type": "number",
+      "title": "Forks per session",
+      "description": "The most forks run in one session; each re-reads the session's prefix from the prompt cache",
+      "default": 6
+    },
+    "summaryModel": {
+      "type": "string",
+      "title": "Summary model",
+      "description": "The model the reader's Summarize button asks for a plain-English version of a memory",
+      "default": "haiku"
+    },
+    "jobPrompts": {
+      "type": "string",
+      "title": "Scheduled-job prompts folder",
+      "description": "A folder of scheduled jobs' prompt .md files, relative to the project; a session whose first prompt starts with one's # heading is never weighed. Empty for none",
+      "default": "tasks/prompts"
+    },
+    "gateModel": {
+      "type": "string",
+      "title": "Gate model",
+      "description": "Empty uses the engine's small fast model via classify; or an alias such as haiku",
+      "default": ""
+    }
+  }
+}

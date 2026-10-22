@@ -1,0 +1,22 @@
+{
+  "name": "r2mcp",
+  "owner": {
+    "name": "Dustin Cheng"
+  },
+  "metadata": {
+    "description": "Claude Code companions for the r2mcp memory server"
+  },
+  "plugins": [
+    {
+      "name": "r2mcp-memory",
+      "source": "./plugins/r2mcp-memory",
+      "description": "r2mcp memory beside the chat: memories related to what you ask, and at each turn's end a cheap gate and a fork that propose what to remember, with Save/Skip and a mode switch on the pane. Any memory opens in a reader with a readable layout and an optional model summary. A Claude Code mod; needs this repo's server connected as the MCP server \"memory\".",
+      "version": "0.1.0",
+      "author": {
+        "name": "Dustin Cheng"
+      },
+      "license": "MIT",
+      "keywords": ["memory", "r2mcp", "mcp", "mod", "pane", "claude-code-only"]
+    }
+  ]
+}

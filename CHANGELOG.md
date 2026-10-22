@@ -5,6 +5,17 @@ entries reference the internal spec numbers that shipped them.
 
 ## [Unreleased]
 
+### Added
+
+- **`r2mcp-memory`, a Claude Code mod** (`plugins/r2mcp-memory/`), and a marketplace file so it
+  installs with `/plugin install r2mcp-memory --marketplace DMokong/r2mcp`. A pane beside the chat
+  shows the memories `recall` finds for each prompt (in the background, never holding the prompt or
+  adding context), and at each turn's end a cheap gate and a session fork propose at most two
+  memories, planned against the nearest existing one as ADD, UPDATE or NOOP; a mode switch on the
+  pane picks off, shadow, propose (Save/Skip) or auto. Any memory opens in a reader with a
+  rule-based readable layout, the stored text, or an optional model summary. Tested with
+  `claude plugin test`; `npm test`, lint and Prettier leave `plugins/` alone.
+
 ## [0.5.1] — 2026-10-06
 
 ### Fixed

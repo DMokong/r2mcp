@@ -1,4 +1,6 @@
 dist/
+# Claude Code mods keep their own style; see plugins/r2mcp-memory/README.md.
+plugins/
 node_modules/
 data/
 coverage/

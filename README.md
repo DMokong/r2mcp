@@ -287,6 +287,19 @@ Do this once now, not during an incident:
 - **Before any prod mutation** (migrations, scope re-stamps, bulk cleanups): take a fresh export first
 - Keep at least a week of dailies; prune older ones
 
+## Claude Code pane (`r2mcp-memory` mod)
+
+A Claude Code mod in [`plugins/r2mcp-memory`](plugins/r2mcp-memory) puts this server beside the
+chat: the memories related to what you ask, proposals of what to remember at each turn's end
+(with Save/Skip, or shadow and auto modes), and a reader that lays any memory out readably or
+summarizes it. It needs the server connected as the MCP server named `memory`.
+
+```
+/plugin install r2mcp-memory --marketplace DMokong/r2mcp
+```
+
+Details, options and the off switch: [`plugins/r2mcp-memory/README.md`](plugins/r2mcp-memory/README.md).
+
 ## Memory Tiers
 
 | Tier | What goes here | Auto-archived after |
