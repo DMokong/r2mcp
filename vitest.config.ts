@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
@@ -6,6 +6,8 @@ export default defineConfig({
     // claw-i6td.2: structural test-DB isolation — runs before every test module
     // and forces R2MCP_DATABASE_URL to a safe test DB so no test can reach prod.
     setupFiles: ['./tests/global-db-guard.ts'],
+    // plugins/ holds Claude Code mods, tested by `claude plugin test` against the engine.
+    exclude: [...configDefaults.exclude, 'plugins/**'],
     coverage: {
       provider: 'v8',
       exclude: [

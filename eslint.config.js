@@ -127,6 +127,8 @@ export default [
       'coverage/',
       'benchmarks/results/',
       '**/*.d.ts',
+      // Claude Code mods: checked by `claude plugin validate` and `claude plugin test`.
+      'plugins/',
     ],
   },
 ];
