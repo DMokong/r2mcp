@@ -5,6 +5,13 @@ entries reference the internal spec numbers that shipped them.
 
 ## [Unreleased]
 
+### Changed
+
+- **`r2mcp-memory` 0.1.1:** each incoming memory card shows the local time it was proposed
+  (`14:05`, or `Oct 22 14:05` on another day), as do the reader and the triggers log. Memories
+  the mod saves are now dated by the local day; they were dated in UTC, a day early each morning
+  east of Greenwich.
+
 ### Added
 
 - **`r2mcp-memory`, a Claude Code mod** (`plugins/r2mcp-memory/`), and a marketplace file so it

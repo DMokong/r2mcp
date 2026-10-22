@@ -37,6 +37,8 @@ export type Candidate = {
 export type Planned = Candidate & {
   id: string
   turn: number
+  /** When the turn that proposed it ended (ms); absent on cards kept from before 0.1.1. */
+  at?: number
   op: Operation
   /** The near-duplicate's id and score, when recall found one. */
   match?: { id: string; score: number; content: string }

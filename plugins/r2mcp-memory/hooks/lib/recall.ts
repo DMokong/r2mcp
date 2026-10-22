@@ -32,6 +32,26 @@ export function parseHits(text: string): Hit[] {
   })
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** A moment as local clock time, `14:05`; with the day, `Oct 22 14:05`, when it is not today. */
+export function stamp(at: number, now: number): string {
+  const d = new Date(at)
+  const today = new Date(now)
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const isToday =
+    d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate()
+
+  return isToday ? time : `${MONTHS[d.getMonth()]} ${d.getDate()} ${time}`
+}
+
+/** A moment's local calendar date, `2026-10-23`: what a memory's `date` should say. */
+export function localDate(at: number): string {
+  const d = new Date(at)
+
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** How long ago an ISO date was, short: `today`, `12d`, `3mo`, `2y`. */
 export function age(updated: string | undefined, now: number): string {
   if (!updated) return ''

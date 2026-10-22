@@ -9,6 +9,7 @@ import {
   precheck,
   refusal,
 } from './lib/scribe'
+import { localDate, stamp } from './lib/recall'
 import { parseSummary, readable } from './lib/readable'
 import type { Candidate, LogRecord, Planned } from '../types'
 
@@ -525,5 +526,35 @@ describe('reader views', () => {
     await ui.press({ key: 'view-summary' })
     expect(w.summaries).toBe(1)
     await ui.unmount()
+  })
+})
+
+describe('timestamps', () => {
+  test('a time today is clock time; another day carries the date', () => {
+    const now = new Date(2026, 9, 23, 16, 0).getTime()
+    expect(stamp(new Date(2026, 9, 23, 14, 5).getTime(), now)).toBe('14:05')
+    expect(stamp(new Date(2026, 9, 22, 9, 0).getTime(), now)).toBe('Oct 22 09:00')
+  })
+
+  test('a memory is dated by the local day', () => {
+    expect(localDate(new Date(2026, 9, 23, 0, 30).getTime())).toBe('2026-10-23')
+  })
+
+  test('an incoming card shows when it was proposed; a write carries the local date', { options: { mode: 'auto' } }, async ($, on) => {
+    const clock = mock.clock(on, { now: new Date(2026, 9, 23, 7, 15).getTime() })
+    const w = world(on)
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    await $.turn.complete(TURN)
+    await clock.settle()
+
+    const [item] = (w.store.candidates ?? []) as Planned[]
+    expect(item?.at).toBe(new Date(2026, 9, 23, 7, 15).getTime())
+    expect((w.writes[0] as { metadata: { date: string } }).metadata.date).toBe('2026-10-23')
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ ...MAIN, surface })
+      expect(await ui.find({ type: 'Text', text: /^ 07:15$/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /07:15 t1/ })).toBeDefined()
+      await ui.unmount()
+    }
   })
 })
